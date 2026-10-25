@@ -72,7 +72,7 @@ External sessions are discovered from the local provider history. Before continu
 - Single computer, single paired phone, fixed project for newly created sessions. No multi-user accounts or UI project picker yet.
 - Slack/email and other inherited MCP integration profiles are not implemented. The assistant must report them unavailable rather than pretend to execute them.
 - Local notifications and cache do not make the computer service available while the computer sleeps.
-- Chat messages render Markdown headings, emphasis, lists, task lists, quotes, code and tables. Text can be selected; web/email links open on tap. Computer file paths remain references on the phone. Remote images and HTML execution are disabled. Table cells have equal widths; table contents are not included in native text selection. Search and polished attachment previews remain UI work.
+- Chat messages render Markdown headings, emphasis, lists, task lists, quotes, code and tables. Text can be selected; web/email links open on tap. Computer file paths remain references on the phone. Remote images and HTML execution are disabled. Table cells have equal widths; table contents are not included in native text selection. The sessions screen supports local title/path search and provider filters; the drawer can show active jobs only. Draft text is saved per session on the phone.
 
 ## Verification
 
@@ -81,3 +81,39 @@ The automated suite covers queue idempotency, asynchronous assistant turns, chil
 A development run on a physical Android phone verified pairing, private Tailscale access, drawer navigation, child transcripts, rendered Markdown, message submission through the phone UI, Android document selection, and real FCM receipt while the screen was in Doze. A file selected on the phone was uploaded and read by Codex, which returned a verification code present only in that file. Attachment prompts remain internal; chat shows the original message and filenames. A real Codex run verified asynchronous delegation, answering a separate arithmetic question while the child ran, and a later summary in the same native assistant session. A separate live Claude turn returned a provider session-limit error; the structured quota state and push dispatch were verified, but successful Claude generation remains unverified in this run. These are observed checks, not a claim of exhaustive device compatibility or production readiness.
 
 Viewer QA on the physical Android device: a two-page synthetic PDF rendered and navigated to page two; the external-app chooser opened; HTML/CSS rendered and an inline JavaScript button changed its label; a synthetic PNG rendered in the image preview.
+
+## Voice assistant (alpha)
+
+Open **Asistan → Sesli asistan** for the avatar view without message bubbles.
+**Ayarlar** accepts an ElevenLabs API key and lists voices available to that account.
+The key needs Voices read, Speech to Text and Text to Speech access. It is sent over the
+paired HTTPS connection and stored only in the computer's state home as
+`elevenlabs.json` (owner-only file permissions). It is not embedded in the APK.
+The settings screen blocks screenshots; the key field disables keyboard suggestions.
+
+Speech uses ElevenLabs Scribe v2 to transcribe Turkish, then submits to the existing
+persistent Codex assistant. The assistant can delegate work and handle new topics
+while children run. New assistant replies use ElevenLabs Multilingual v2. This is
+turn-based speech, not a separate ElevenLabs conversational agent or a realtime
+full-duplex call. Pause briefly to submit; each utterance is limited to 30 seconds.
+Use **Söz al** to interrupt playback. Microphone mute and response playback are separate.
+Leaving the voice screen, backgrounding the app or losing audio focus stops the call.
+No background microphone service is installed.
+
+Audio and spoken reply text leave the computer for ElevenLabs. Provider retention
+depends on the account's terms; zero retention is not implied. Raw recordings are
+not stored by this service. Transcripts remain in normal assistant history. Generated
+speech is cached privately under `voice-cache` on the computer, without automatic expiry.
+The phone deletes temporary playback files. Starting a call skips older replies.
+
+Transcription requests use durable request IDs: a completed retry returns the same
+receipt; an uncertain attempt is not automatically replayed. Concurrent synthesis of
+the same reply/voice shares one request and successful audio is reused. Failed synthesis
+can be retried and provider charging cannot be guaranteed exactly once across crashes.
+
+Validation: automated tests cover credential redaction/permissions, transcript
+deduplication, conflicting retries, quota errors and uncertain-request handling.
+Android debug build and lint pass. The avatar view and settings navigation were
+checked on a physical phone. A real ElevenLabs API check synthesized a short Turkish test sentence and Scribe
+transcribed it correctly. Phone microphone capture and conversational playback need
+a separate live spoken check; API round-trip success does not establish device audio quality.

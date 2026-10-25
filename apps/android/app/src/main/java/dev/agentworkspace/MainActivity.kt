@@ -66,6 +66,8 @@ class MainActivity : ComponentActivity() {
                         onPrimaryContainer = Color(0xffd5f4e6),
                         secondaryContainer = Color(0xff30473e),
                         surfaceContainer = Color(0xff1c2923),
+                        surfaceContainerHigh = Color(0xff22352c),
+                        surfaceContainerHighest = Color(0xff2a4035),
                         secondary = Color(0xffb6ccbf),
                         surface = Color(0xff111a17),
                         background = Color(0xff111a17),
@@ -77,6 +79,8 @@ class MainActivity : ComponentActivity() {
                         onPrimaryContainer = Color(0xff163f31),
                         secondaryContainer = Color(0xffe2eae4),
                         surfaceContainer = Color(0xffedf2ee),
+                        surfaceContainerHigh = Color(0xffe6eee8),
+                        surfaceContainerHighest = Color(0xffdce7df),
                         secondary = Color(0xff52665d),
                         surface = Color(0xfff7faf7),
                         background = Color(0xfff7faf7),
@@ -111,7 +115,29 @@ fun statusLabel(s: String) =
 fun WorkspaceApp(model: WorkspaceModel) {
     val s by model.state.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf("assistant") }
-    var draft by rememberSaveable { mutableStateOf("") }
+    var draft by
+        remember(model.selected) {
+            mutableStateOf(model.repo.local.get("draft:" + model.selected) ?: "")
+        }
+    fun changeDraft(value: String) {
+        draft = value
+        model.repo.local.put("draft:" + model.selected, value)
+    }
+    val voiceModel: VoiceModel = viewModel()
+    var showVoice by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    var sessionQuery by rememberSaveable { mutableStateOf("") }
+    var activeJobsOnly by rememberSaveable { mutableStateOf(false) }
+    if (showVoice)
+        VoiceScreen(
+            voiceModel,
+            onClose = { showVoice = false },
+            onSettings = {
+                showVoice = false
+                showSettings = true
+            },
+        )
+    if (showSettings) SettingsScreen(voiceModel, model, onClose = { showSettings = false })
     var title by rememberSaveable { mutableStateOf("Asistan") }
     var showNew by remember { mutableStateOf(false) }
     var showTools by remember { mutableStateOf(false) }
@@ -151,7 +177,10 @@ fun WorkspaceApp(model: WorkspaceModel) {
     ModalNavigationDrawer(
         drawerState = drawer,
         drawerContent = {
-            ModalDrawerSheet(modifier = Modifier.widthIn(max = 360.dp)) {
+            ModalDrawerSheet(
+                modifier = Modifier.widthIn(max = 360.dp),
+                drawerContainerColor = MaterialTheme.colorScheme.surface,
+            ) {
                 Row(
                     Modifier.fillMaxWidth().padding(24.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -172,6 +201,13 @@ fun WorkspaceApp(model: WorkspaceModel) {
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    item {
+                        FilterChip(
+                            selected = activeJobsOnly,
+                            onClick = { activeJobsOnly = !activeJobsOnly },
+                            label = { Text("Yalnızca aktif işler") },
+                        )
+                    }
                     if (jobs.isEmpty())
                         item {
                             Text(
@@ -180,9 +216,15 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             )
                         }
                     items(
-                        jobs.sortedBy {
-                            if (it.optString("status") == "waiting_question") 0 else 1
-                        },
+                        jobs
+                            .filter {
+                                !activeJobsOnly ||
+                                    it.optString("status") !in
+                                        listOf("completed", "cancelled", "failed")
+                            }
+                            .sortedBy {
+                                if (it.optString("status") == "waiting_question") 0 else 1
+                            },
                         key = { it.getString("id") },
                     ) { t ->
                         ElevatedCard(onClick = { openTask(t) }) {
@@ -242,6 +284,9 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             }
                     },
                     actions = {
+                        IconButton(onClick = { showSettings = true }) {
+                            Icon(Icons.Default.Settings, "Ayarlar")
+                        }
                         TextButton(onClick = { scope.launch { drawer.open() } }) {
                             Text("İşler · $openJobs")
                         }
@@ -252,11 +297,32 @@ fun WorkspaceApp(model: WorkspaceModel) {
                 Column {
                     if (tab != "sessions") {
                         if (s.attached.isNotEmpty())
-                            Text(
-                                s.attached.joinToString(" · ") { it.second },
-                                Modifier.padding(horizontal = 16.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                            )
+                            androidx.compose.foundation.lazy.LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                items(s.attached) { (id, name) ->
+                                    InputChip(
+                                        selected = false,
+                                        onClick = {
+                                            model.openAttachment(ChatAttachment(id, name))
+                                        },
+                                        label = { Text(name, maxLines = 1) },
+                                        trailingIcon = {
+                                            IconButton(
+                                                onClick = { model.removeAttachment(id) },
+                                                modifier = Modifier.size(24.dp),
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Close,
+                                                    "Eki kaldır: $name",
+                                                    Modifier.size(16.dp),
+                                                )
+                                            }
+                                        },
+                                    )
+                                }
+                            }
                         if (s.rejected.isNotEmpty()) {
                             Column(Modifier.fillMaxWidth().padding(12.dp)) {
                                 Text(
@@ -306,18 +372,26 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             }
                             OutlinedTextField(
                                 value = draft,
-                                onValueChange = { draft = it },
+                                onValueChange = { changeDraft(it) },
                                 placeholder = { Text("Mesajını yaz…") },
                                 modifier = Modifier.weight(1f),
                                 maxLines = 5,
                                 shape = RoundedCornerShape(24.dp),
                             )
+                            if (tab == "assistant")
+                                IconButton(onClick = { showVoice = true }) {
+                                    Icon(
+                                        Icons.Default.GraphicEq,
+                                        "Sesli asistan",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
                             IconButton(
                                 onClick = {
                                     if (model.nativeSelection != null) showExternal = true
                                     else {
                                         model.send(draft)
-                                        draft = ""
+                                        changeDraft("")
                                     }
                                 },
                                 enabled = draft.isNotBlank() && !s.loading,
@@ -398,6 +472,14 @@ fun WorkspaceApp(model: WorkspaceModel) {
                         Spacer(Modifier.weight(1f))
                         TextButton(onClick = { showNew = true }) { Text("＋ Yeni") }
                     }
+                    OutlinedTextField(
+                        sessionQuery,
+                        { sessionQuery = it },
+                        singleLine = true,
+                        label = { Text("Oturum ara") },
+                        leadingIcon = { Icon(Icons.Default.Search, null) },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    )
                     LazyColumn(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -410,7 +492,11 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             )
                         }
                         items(
-                            tasks.filter { !it.has("parentTaskId") },
+                            tasks.filter {
+                                !it.has("parentTaskId") &&
+                                    it.optString("provider") == nativeProvider &&
+                                    it.optString("title").contains(sessionQuery, true)
+                            },
                             key = { "managed-" + it.getString("id") },
                         ) { t ->
                             SessionCard(
@@ -427,7 +513,13 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                 color = MaterialTheme.colorScheme.secondary,
                             )
                         }
-                        items(s.nativeSessions, key = { "native-" + it.getString("id") }) { t ->
+                        items(
+                            s.nativeSessions.filter {
+                                it.optString("title").contains(sessionQuery, true) ||
+                                    it.optString("cwd").contains(sessionQuery, true)
+                            },
+                            key = { "native-" + it.getString("id") },
+                        ) { t ->
                             SessionCard(
                                 t.optString("title"),
                                 t.optString("provider") + " · Harici oturum",
@@ -480,9 +572,19 @@ fun WorkspaceApp(model: WorkspaceModel) {
                     }
                     val visibleLines = if (showTools) s.toolLines else s.lines
                     val list = rememberLazyListState()
-                    LaunchedEffect(visibleLines.size) {
-                        if (visibleLines.isNotEmpty())
-                            list.animateScrollToItem(visibleLines.lastIndex)
+                    var initiallyPositioned by
+                        remember(model.selected, showTools) { mutableStateOf(false) }
+                    LaunchedEffect(model.selected, showTools, visibleLines.size) {
+                        if (
+                            visibleLines.isNotEmpty() &&
+                                (!initiallyPositioned ||
+                                    list.layoutInfo.totalItemsCount == 0 ||
+                                    (list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >=
+                                        list.layoutInfo.totalItemsCount - 3)
+                        ) {
+                            list.scrollToItem(visibleLines.lastIndex)
+                            initiallyPositioned = true
+                        }
                     }
                     LazyColumn(
                         state = list,
@@ -666,7 +768,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                 TextButton(
                     onClick = {
                         model.send(draft, true)
-                        draft = ""
+                        changeDraft("")
                         showExternal = false
                     }
                 ) {

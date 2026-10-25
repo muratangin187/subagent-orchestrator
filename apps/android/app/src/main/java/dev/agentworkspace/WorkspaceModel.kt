@@ -541,6 +541,10 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun removeAttachment(id: String) {
+        update { it.copy(attached = it.attached.filterNot { a -> a.first == id }) }
+    }
+
     fun upload(uri: Uri) {
         attachmentJobs++
         update { it.copy(loading = true) }

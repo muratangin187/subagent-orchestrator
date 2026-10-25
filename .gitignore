@@ -21,3 +21,5 @@ apps/android/local.properties
 
 # Personal Firebase app configuration stays local. Never commit service-account keys.
 apps/android/app/google-services.json
+
+apps/android/.kotlin/

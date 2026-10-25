@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { WorkspaceController } from "./controller.js";
 import { nativeList, nativeRead } from "./native.js";
+import { VoiceService } from "./voice.js";
 import { errorText } from "../types.js";
 import { configuredSender, PushDispatcher } from "./push.js";
 const message = z
@@ -38,6 +39,7 @@ export async function startGateway(
   home: string,
   port: number,
 ) {
+  const voice = new VoiceService(controller, home);
   const sender = configuredSender();
   const push = sender ? new PushDispatcher(controller, sender) : undefined;
   const secretPath = join(home, "device-secret");
@@ -106,6 +108,39 @@ export async function startGateway(
         }
         paired = true;
         send(200, { token: secret });
+        return;
+      }
+      if (url.pathname === "/v1/voice/status" && req.method === "GET") {
+        send(200, voice.status());
+        return;
+      }
+      if (url.pathname === "/v1/voice/voices" && req.method === "GET") {
+        send(200, await voice.voices());
+        return;
+      }
+      if (url.pathname === "/v1/voice/config" && req.method === "POST") {
+        send(200, await voice.configure(body));
+        return;
+      }
+      if (url.pathname === "/v1/voice/transcribe" && req.method === "POST") {
+        send(202, await voice.transcribe(body));
+        return;
+      }
+      if (url.pathname === "/v1/voice/speech" && req.method === "POST") {
+        send(200, await voice.speech(body));
+        return;
+      }
+      if (url.pathname === "/v1/voice/events" && req.method === "GET") {
+        send(
+          200,
+          voice.events(
+            z.coerce
+              .number()
+              .int()
+              .nonnegative()
+              .parse(url.searchParams.get("after") ?? 0),
+          ),
+        );
         return;
       }
       if (req.method === "POST" && url.pathname === "/v1/push/register") {
