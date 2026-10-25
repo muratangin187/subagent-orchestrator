@@ -14,6 +14,13 @@ agent-orchestrator workspace --home "$HOME/.local/share/agent-workspace" \
 
 When using a checkout rather than an installed release, replace `agent-orchestrator` with `node dist/cli.js`. `ORCHESTRATOR_CODEX_BIN` and `ORCHESTRATOR_CLAUDE_BIN` select explicit CLI binaries. Models come from your installed provider and account; the app does not silently substitute unsupported models.
 
+Codex shell network access is disabled by default. To enable internet access without
+granting file writes, set `ORCHESTRATOR_CODEX_NETWORK_ACCESS=true` in the computer
+service environment and restart the service while idle. This host-level setting
+applies to subsequent Codex turns (including resumed sessions and children); it
+also enables live web search. It does not change the filesystem permission ceiling
+or enable permission escalation. Existing active turns keep their original policy.
+
 The service defaults to **read-only**. Set `--ceiling workspace-write` only for a workspace where agents should edit files. The phone cannot elevate the ceiling. New sessions use this working directory; an imported native session retains its own directory.
 
 Expose the loopback API through a private Tailscale HTTPS endpoint, for example:

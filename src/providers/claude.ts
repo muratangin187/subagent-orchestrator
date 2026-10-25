@@ -53,7 +53,7 @@ export class ClaudeDriver implements Driver {
       "Grep",
       "AskUserQuestion",
       ...(!readOnly ? ["Write", "Edit"] : []),
-      ...(full ? ["Bash"] : []),
+      ...(full ? ["Bash", "WebSearch", "WebFetch"] : []),
     ];
     const q = (this.current = query({
       prompt: ctx.run.prompt,
@@ -100,7 +100,7 @@ export class ClaudeDriver implements Driver {
             (full || (await isWithinWorkspace(ctx.task.cwd, input.file_path)))
           )
             return { behavior: "allow", updatedInput: input };
-          if (full && name === "Bash")
+          if (full && ["Bash", "WebSearch", "WebFetch"].includes(name))
             return { behavior: "allow", updatedInput: input };
           ctx.event({ type: "permission_denied", payload: { tool: name } });
           return {

@@ -154,6 +154,9 @@ export class CodexDriver implements Driver {
         : ctx.task.runtimeMode === "full-access"
           ? "danger-full-access"
           : "workspace-write";
+      // Host-controlled opt-in; agents cannot request a higher network ceiling.
+      const networkAccess =
+        process.env.ORCHESTRATOR_CODEX_NETWORK_ACCESS === "true";
       const params = {
         cwd: ctx.task.cwd,
         model: ctx.task.model,
@@ -161,6 +164,7 @@ export class CodexDriver implements Driver {
         approvalPolicy: "never",
         config: {
           "features.multi_agent": false,
+          ...(networkAccess ? { web_search: "live" } : {}),
           ...(ctx.delegation
             ? {
                 "mcp_servers.standalone_children.command":
@@ -189,13 +193,13 @@ export class CodexDriver implements Driver {
       this.threadId = response.thread.id;
       ctx.session(this.threadId!);
       const sandboxPolicy = readOnly
-        ? { type: "readOnly", networkAccess: false }
+        ? { type: "readOnly", networkAccess }
         : ctx.task.runtimeMode === "full-access"
           ? { type: "dangerFullAccess" }
           : {
               type: "workspaceWrite",
               writableRoots: [ctx.task.cwd],
-              networkAccess: false,
+              networkAccess,
               excludeTmpdirEnvVar: true,
               excludeSlashTmp: true,
             };
