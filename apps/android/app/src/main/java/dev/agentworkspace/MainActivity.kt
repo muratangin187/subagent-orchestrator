@@ -129,26 +129,8 @@ fun WorkspaceApp(model: WorkspaceModel) {
         PairScreen(model, s)
         return
     }
-    s.attachmentPreview?.let { (name, content) ->
-        AlertDialog(
-            onDismissRequest = model::closeAttachmentPreview,
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            title = { Text(name, maxLines = 2) },
-            text = {
-                androidx.compose.foundation.text.selection.SelectionContainer {
-                    Text(
-                        content,
-                        modifier =
-                            Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = model::closeAttachmentPreview) { Text("Kapat") }
-            },
-        )
+    s.attachmentPreview?.let { preview ->
+        AttachmentViewer(preview, onClose = model::closeAttachmentPreview)
     }
     val tasks = s.snapshot.optJSONArray("tasks")?.objects() ?: emptyList()
     val jobs =

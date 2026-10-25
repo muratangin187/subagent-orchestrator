@@ -206,6 +206,26 @@ test("gateway requires pairing, rejects origins and limits external resume", asy
       ).status,
       400,
     );
+    assert.equal(
+      (
+        await post("/v1/upload", {
+          id: "22345678-1234-4234-8234-123456789abc",
+          name: "preview.html",
+          content: Buffer.from("<h1>Preview</h1>").toString("base64"),
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await post("/v1/upload", {
+          id: "32345678-1234-4234-8234-123456789abc",
+          name: "script.exe",
+          content: "AA==",
+        })
+      ).status,
+      400,
+    );
     const input = {
       clientRequestId: "http-idempotency",
       text: "read file",

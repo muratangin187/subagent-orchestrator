@@ -21,6 +21,8 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
+    implementation("io.coil-kt.coil3:coil-compose:3.3.0")
+    implementation("androidx.webkit:webkit:1.14.0")
     implementation("io.noties.markwon:core:4.6.2")
     implementation("io.noties.markwon:ext-strikethrough:4.6.2")
     implementation("io.noties.markwon:ext-tasklist:4.6.2")

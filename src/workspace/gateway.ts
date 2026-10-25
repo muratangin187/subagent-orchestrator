@@ -246,7 +246,11 @@ export async function startGateway(
         if (bytes.length > 5 * 1024 * 1024)
           throw Error("Maximum attachment size is 5 MiB");
         const safe = a.name.replace(/[^\p{L}\p{N}._-]/gu, "_");
-        if (!/\.(txt|md|json|csv|log|ts|js|py|pdf|png|jpe?g|webp)$/i.test(safe))
+        if (
+          !/\.(txt|md|json|csv|log|ts|js|py|html?|pdf|png|jpe?g|webp)$/i.test(
+            safe,
+          )
+        )
           throw Error("Unsupported attachment type");
         if (existsSync(uploads) && lstatSync(uploads).isSymbolicLink())
           throw Error("Attachment directory must not be a symlink");

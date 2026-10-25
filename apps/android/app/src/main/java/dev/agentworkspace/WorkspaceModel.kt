@@ -42,7 +42,7 @@ data class ScreenState(
     val rejected: List<Pair<String, String>> = emptyList(),
     val loading: Boolean = false,
     val openingAttachment: String? = null,
-    val attachmentPreview: Pair<String, String>? = null,
+    val attachmentPreview: AttachmentPreview? = null,
     val attached: List<Pair<String, String>> = emptyList(),
 )
 
@@ -525,45 +525,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                         }
                         cached
                     }
-                val extension = attachment.name.substringAfterLast('.', "").lowercase()
-                if (extension in setOf("txt", "md", "json", "csv", "log", "ts", "js", "py")) {
-                    val preview =
-                        withContext(Dispatchers.IO) {
-                            file.inputStream().bufferedReader().use { reader ->
-                                val buffer = CharArray(100001)
-                                var used = 0
-                                while (used < buffer.size) {
-                                    val n = reader.read(buffer, used, buffer.size - used)
-                                    if (n < 0) break
-                                    used += n
-                                }
-                                String(buffer, 0, minOf(used, 100000)) +
-                                    if (used > 100000) "\n[Önizleme ilk 100.000 karakterle sınırlı]"
-                                    else ""
-                            }
-                        }
-                    update { it.copy(attachmentPreview = attachment.name to preview) }
-                } else {
-                    val app = getApplication<Application>()
-                    val uri =
-                        androidx.core.content.FileProvider.getUriForFile(
-                            app,
-                            app.packageName + ".files",
-                            file,
-                        )
-                    val mime =
-                        android.webkit.MimeTypeMap.getSingleton()
-                            .getMimeTypeFromExtension(extension) ?: "application/octet-stream"
-                    app.startActivity(
-                        android.content
-                            .Intent(android.content.Intent.ACTION_VIEW)
-                            .setDataAndType(uri, mime)
-                            .addFlags(
-                                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK
-                            )
-                    )
-                }
+                update { it.copy(attachmentPreview = AttachmentPreview(attachment.name, file)) }
             } catch (e: Exception) {
                 update {
                     it.copy(
