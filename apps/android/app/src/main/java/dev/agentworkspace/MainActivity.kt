@@ -548,7 +548,8 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.primary,
                                             )
-                                        SelectionContainerCompat(line.text)
+                                        if (showTools) SelectionContainerCompat(line.text)
+                                        else MarkdownMessage(line.text)
                                     }
                                 }
                             }

@@ -72,7 +72,7 @@ External sessions are discovered from the local provider history. Before continu
 - Single computer, single paired phone, fixed project for newly created sessions. No multi-user accounts or UI project picker yet.
 - Slack/email and other inherited MCP integration profiles are not implemented. The assistant must report them unavailable rather than pretend to execute them.
 - Local notifications and cache do not make the computer service available while the computer sleeps.
-- The chat renderer currently shows plain text, including Markdown source. Rich formatting, search and polished attachment previews remain UI work.
+- Chat messages render Markdown headings, emphasis, lists, task lists, quotes, code and tables. Text can be selected; web/email links open on tap. Computer file paths remain references on the phone. Remote images and HTML execution are disabled. Table cells have equal widths; table contents are not included in native text selection. Search and polished attachment previews remain UI work.
 
 ## Verification
 
