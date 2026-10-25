@@ -3,6 +3,7 @@ package dev.agentworkspace
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -135,6 +136,8 @@ fun WorkspaceApp(model: WorkspaceModel) {
     val voiceModel: VoiceModel = viewModel()
     var showVoice by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var settingsFromVoice by remember { mutableStateOf(false) }
+    var navigationHistory by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
     var sessionQuery by rememberSaveable { mutableStateOf("") }
     var activeJobsOnly by rememberSaveable { mutableStateOf(false) }
     if (showVoice)
@@ -143,10 +146,20 @@ fun WorkspaceApp(model: WorkspaceModel) {
             onClose = { showVoice = false },
             onSettings = {
                 showVoice = false
+                settingsFromVoice = true
                 showSettings = true
             },
         )
-    if (showSettings) SettingsScreen(voiceModel, model, onClose = { showSettings = false })
+    if (showSettings)
+        SettingsScreen(
+            voiceModel,
+            model,
+            onClose = {
+                showSettings = false
+                if (settingsFromVoice) showVoice = true
+                settingsFromVoice = false
+            },
+        )
     var title by rememberSaveable { mutableStateOf("Asistan") }
     var showNew by remember { mutableStateOf(false) }
     val keyboardVisible = WindowInsets.isImeVisible
@@ -194,7 +207,53 @@ fun WorkspaceApp(model: WorkspaceModel) {
     val selectedId =
         if (model.selected == "assistant") s.snapshot.optString("assistantId") else model.selected
     val current = tasks.find { it.optString("id") == selectedId }
+    fun rememberPage() {
+        val page =
+            JSONObject()
+                .put("tab", tab)
+                .put("title", title)
+                .put("drawer", drawer.isOpen)
+                .put("selected", model.selected)
+                .put("native", model.nativeSelection)
+        navigationHistory = ArrayList(navigationHistory + page.toString())
+    }
+    fun returnToAssistant() {
+        navigationHistory = arrayListOf()
+        tab = "assistant"
+        title = "Asistan"
+        model.open("assistant")
+    }
+    fun goBack() {
+        if (navigationHistory.isEmpty()) returnToAssistant()
+        else {
+            val page = JSONObject(navigationHistory.last())
+            navigationHistory = ArrayList(navigationHistory.dropLast(1))
+            tab = page.getString("tab")
+            title = page.getString("title")
+            val native = page.optJSONObject("native")
+            if (native != null) model.openNative(native) else model.open(page.getString("selected"))
+            if (page.optBoolean("drawer")) scope.launch { drawer.open() }
+        }
+    }
+    val hasOverlay =
+        showVoice ||
+            showSettings ||
+            showNew ||
+            showExternal ||
+            showAttachmentSource ||
+            questionTask != null ||
+            confirmCancel != null ||
+            s.attachmentPreview != null
+    BackHandler(
+        enabled =
+            !keyboardVisible &&
+                !hasOverlay &&
+                (drawer.isOpen || tab != "assistant" || navigationHistory.isNotEmpty())
+    ) {
+        if (drawer.isOpen) scope.launch { drawer.close() } else goBack()
+    }
     fun openTask(t: JSONObject) {
+        rememberPage()
         model.open(t.getString("id"))
         title = t.optString("title")
         tab = "chat"
@@ -293,18 +352,17 @@ fun WorkspaceApp(model: WorkspaceModel) {
                     },
                     navigationIcon = {
                         if (tab == "chat")
-                            IconButton(
-                                onClick = {
-                                    tab = "assistant"
-                                    title = "Asistan"
-                                    model.open("assistant")
-                                }
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Asistana dön")
+                            IconButton(onClick = { goBack() }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri")
                             }
                     },
                     actions = {
-                        IconButton(onClick = { showSettings = true }) {
+                        IconButton(
+                            onClick = {
+                                settingsFromVoice = false
+                                showSettings = true
+                            }
+                        ) {
                             Icon(Icons.Default.Settings, "Ayarlar")
                         }
                         TextButton(onClick = { scope.launch { drawer.open() } }) {
@@ -534,6 +592,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                 t.optString("title"),
                                 t.optString("provider") + " · Harici oturum",
                             ) {
+                                rememberPage()
                                 model.openNative(t)
                                 title = t.optString("title")
                                 tab = "chat"
@@ -809,6 +868,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
             confirmButton = {
                 TextButton(
                     onClick = {
+                        rememberPage()
                         model.newProvider = provider
                         model.newModel = chosenModel
                         model.newSession()
