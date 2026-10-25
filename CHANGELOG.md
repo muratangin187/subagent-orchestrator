@@ -1,5 +1,14 @@
 # Değişiklikler
 
+## Android 0.2.0-alpha.2
+
+- Remove excess keyboard spacing and hide bottom navigation while typing.
+- Replace tool-log toggle with clickable active-task chips and animated status indicators.
+- Sort jobs by active state, then most recent activity.
+- Place cancellation beside task progress in one row.
+- Add Camera / File attachment picker with private temporary photo handling.
+
+
 ## 0.1.1 — 2026-10-25
 
 - Kota ve hız sınırı hataları üst ajana yapılandırılmış bildirimle iletilir.

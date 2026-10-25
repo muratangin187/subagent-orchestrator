@@ -545,7 +545,11 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
         update { it.copy(attached = it.attached.filterNot { a -> a.first == id }) }
     }
 
-    fun upload(uri: Uri) {
+    fun showError(message: String) {
+        update { it.copy(error = message) }
+    }
+
+    fun upload(uri: Uri, temporaryFile: java.io.File? = null) {
         attachmentJobs++
         update { it.copy(loading = true) }
         viewModelScope.launch {
@@ -593,6 +597,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 update { it.copy(error = e.message) }
             } finally {
+                temporaryFile?.delete()
                 attachmentJobs--
                 update { it.copy(loading = attachmentJobs > 0) }
             }

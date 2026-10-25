@@ -1,16 +1,19 @@
 package dev.agentworkspace
 
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -21,16 +24,22 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import java.io.File
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -110,7 +119,7 @@ fun statusLabel(s: String) =
         else -> s
     }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun WorkspaceApp(model: WorkspaceModel) {
     val s by model.state.collectAsStateWithLifecycle()
@@ -140,7 +149,18 @@ fun WorkspaceApp(model: WorkspaceModel) {
     if (showSettings) SettingsScreen(voiceModel, model, onClose = { showSettings = false })
     var title by rememberSaveable { mutableStateOf("Asistan") }
     var showNew by remember { mutableStateOf(false) }
-    var showTools by remember { mutableStateOf(false) }
+    val keyboardVisible = WindowInsets.isImeVisible
+    var showAttachmentSource by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var cameraUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var cameraPath by rememberSaveable { mutableStateOf<String?>(null) }
+    val camera =
+        rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { captured ->
+            if (captured) cameraUri?.let { model.upload(Uri.parse(it), cameraPath?.let(::File)) }
+            else cameraPath?.let { File(it).delete() }
+            cameraPath = null
+            cameraUri = null
+        }
     var showExternal by remember { mutableStateOf(false) }
     var questionTask by remember { mutableStateOf<JSONObject?>(null) }
     var confirmCancel by remember { mutableStateOf<JSONObject?>(null) }
@@ -163,8 +183,14 @@ fun WorkspaceApp(model: WorkspaceModel) {
         tasks.filter {
             it.optString("parentTaskId").isNotBlank() && it.optString("parentTaskId") != "null"
         }
-    val openJobs =
-        jobs.count { it.optString("status") !in listOf("completed", "cancelled", "failed") }
+    val sortedJobs =
+        jobs.sortedWith(
+            compareByDescending<JSONObject> { isActiveJob(it) }
+                .thenByDescending { it.optLong("updatedAt", it.optLong("createdAt")) }
+                .thenByDescending { it.optLong("createdAt") }
+        )
+    val activeJobs = sortedJobs.filter { isActiveJob(it) }
+    val openJobs = activeJobs.size
     val selectedId =
         if (model.selected == "assistant") s.snapshot.optString("assistantId") else model.selected
     val current = tasks.find { it.optString("id") == selectedId }
@@ -216,15 +242,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             )
                         }
                     items(
-                        jobs
-                            .filter {
-                                !activeJobsOnly ||
-                                    it.optString("status") !in
-                                        listOf("completed", "cancelled", "failed")
-                            }
-                            .sortedBy {
-                                if (it.optString("status") == "waiting_question") 0 else 1
-                            },
+                        sortedJobs.filter { !activeJobsOnly || isActiveJob(it) },
                         key = { it.getString("id") },
                     ) { t ->
                         ElevatedCard(onClick = { openTask(t) }) {
@@ -253,6 +271,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
         },
     ) {
         Scaffold(
+            modifier = Modifier.imePadding(),
             topBar = {
                 TopAppBar(
                     title = {
@@ -261,6 +280,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                 if (tab == "sessions") "Oturumlar" else title,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                             Text(
                                 if (s.online) "Bilgisayar bağlı" else "Bağlantı yok · yerel kayıt",
@@ -350,22 +370,11 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                 TextButton(onClick = model::cancelPending) { Text("Kuyruğu sil") }
                             }
                         Row(
-                            Modifier.fillMaxWidth()
-                                .imePadding()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.Bottom,
                         ) {
                             IconButton(
-                                onClick = {
-                                    files.launch(
-                                        arrayOf(
-                                            "text/*",
-                                            "image/*",
-                                            "application/pdf",
-                                            "application/json",
-                                        )
-                                    )
-                                },
+                                onClick = { showAttachmentSource = true },
                                 enabled = !s.loading && s.attached.size < 5,
                             ) {
                                 Icon(Icons.Default.AttachFile, "Dosya ekle")
@@ -404,27 +413,28 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             }
                         }
                     }
-                    NavigationBar {
-                        NavigationBarItem(
-                            selected = tab != "sessions",
-                            onClick = {
-                                tab = "assistant"
-                                title = "Asistan"
-                                model.open("assistant")
-                            },
-                            icon = { Icon(Icons.Default.ChatBubbleOutline, "Asistan") },
-                            label = { Text("Asistan") },
-                        )
-                        NavigationBarItem(
-                            selected = tab == "sessions",
-                            onClick = {
-                                tab = "sessions"
-                                model.listNative(nativeProvider)
-                            },
-                            icon = { Icon(Icons.Default.Forum, "Oturumlar") },
-                            label = { Text("Oturumlar") },
-                        )
-                    }
+                    if (!keyboardVisible)
+                        NavigationBar {
+                            NavigationBarItem(
+                                selected = tab != "sessions",
+                                onClick = {
+                                    tab = "assistant"
+                                    title = "Asistan"
+                                    model.open("assistant")
+                                },
+                                icon = { Icon(Icons.Default.ChatBubbleOutline, "Asistan") },
+                                label = { Text("Asistan") },
+                            )
+                            NavigationBarItem(
+                                selected = tab == "sessions",
+                                onClick = {
+                                    tab = "sessions"
+                                    model.listNative(nativeProvider)
+                                },
+                                icon = { Icon(Icons.Default.Forum, "Oturumlar") },
+                                label = { Text("Oturumlar") },
+                            )
+                        }
                 }
             },
         ) { padding ->
@@ -551,15 +561,31 @@ fun WorkspaceApp(model: WorkspaceModel) {
                         ) {
                             Text("Bu iş yanıtını bekliyor")
                         }
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        TextButton(onClick = { showTools = !showTools }) {
-                            Text(
-                                if (showTools) "Sohbete dön"
-                                else "Araç kayıtları (${s.toolLines.size})"
-                            )
+                    if (activeJobs.isNotEmpty()) {
+                        androidx.compose.foundation.lazy.LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(activeJobs, key = { it.getString("id") }) { job ->
+                                AssistChip(
+                                    onClick = { openTask(job) },
+                                    label = {
+                                        Text(
+                                            job.optString("title"),
+                                            Modifier.widthIn(max = 180.dp),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    },
+                                    leadingIcon = { JobIndicator(job.optString("status")) },
+                                    shape = RoundedCornerShape(24.dp),
+                                    colors =
+                                        AssistChipDefaults.assistChipColors(
+                                            containerColor =
+                                                MaterialTheme.colorScheme.surfaceContainer
+                                        ),
+                                )
+                            }
                         }
                     }
                     if (model.nativeSelection != null && s.historyCursor != null) {
@@ -570,11 +596,10 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             Text("Daha fazla geçmiş yükle")
                         }
                     }
-                    val visibleLines = if (showTools) s.toolLines else s.lines
+                    val visibleLines = s.lines
                     val list = rememberLazyListState()
-                    var initiallyPositioned by
-                        remember(model.selected, showTools) { mutableStateOf(false) }
-                    LaunchedEffect(model.selected, showTools, visibleLines.size) {
+                    var initiallyPositioned by remember(model.selected) { mutableStateOf(false) }
+                    LaunchedEffect(model.selected, visibleLines.size) {
                         if (
                             visibleLines.isNotEmpty() &&
                                 (!initiallyPositioned ||
@@ -653,53 +678,96 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.primary,
                                             )
-                                        if (showTools) SelectionContainerCompat(line.text)
-                                        else MarkdownMessage(line.text)
-                                        if (!showTools)
-                                            line.attachments.forEach { attachment ->
-                                                Spacer(Modifier.height(10.dp))
-                                                AttachmentCard(
-                                                    attachment,
-                                                    s.openingAttachment == attachment.id,
-                                                ) {
-                                                    model.openAttachment(attachment)
-                                                }
+                                        MarkdownMessage(line.text)
+                                        line.attachments.forEach { attachment ->
+                                            Spacer(Modifier.height(10.dp))
+                                            AttachmentCard(
+                                                attachment,
+                                                s.openingAttachment == attachment.id,
+                                            ) {
+                                                model.openAttachment(attachment)
                                             }
+                                        }
                                     }
                                 }
                             }
                         }
-                        if (
-                            current?.optString("status") in
-                                listOf("pending", "running", "waiting_children")
-                        )
+                        if (current != null && isActiveJob(current))
                             item {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    CircularProgressIndicator(
-                                        Modifier.size(16.dp),
-                                        strokeWidth = 2.dp,
-                                    )
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    JobIndicator(current.optString("status"))
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        statusLabel(current!!.optString("status")),
+                                        if (current.optString("status") == "running") "Çalışıyorum"
+                                        else statusLabel(current.optString("status")),
+                                        modifier = Modifier.weight(1f),
                                         style = MaterialTheme.typography.bodySmall,
                                     )
-                                }
-                            }
-                        if (
-                            current != null &&
-                                tab == "chat" &&
-                                current.optString("status") !in
-                                    listOf("completed", "failed", "cancelled")
-                        )
-                            item {
-                                TextButton(onClick = { confirmCancel = current }) {
-                                    Text("İşi ve alt görevleri iptal et")
+                                    TextButton(onClick = { confirmCancel = current }) {
+                                        Icon(Icons.Default.StopCircle, null, Modifier.size(16.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("İptal et")
+                                    }
                                 }
                             }
                     }
                 }
             }
+        }
+    }
+    if (showAttachmentSource) {
+        ModalBottomSheet(
+            onDismissRequest = { showAttachmentSource = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            Text(
+                "Sohbete ekle",
+                Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            ListItem(
+                headlineContent = { Text("Kamera") },
+                supportingContent = { Text("Fotoğraf çek") },
+                leadingContent = { Icon(Icons.Default.PhotoCamera, null) },
+                modifier =
+                    Modifier.clickable {
+                        showAttachmentSource = false
+                        try {
+                            val dir = File(context.cacheDir, "camera").apply { mkdirs() }
+                            val file = File.createTempFile("photo-", ".jpg", dir)
+                            val uri =
+                                FileProvider.getUriForFile(
+                                    context,
+                                    context.packageName + ".files",
+                                    file,
+                                )
+                            cameraPath = file.absolutePath
+                            cameraUri = uri.toString()
+                            camera.launch(uri)
+                        } catch (e: Exception) {
+                            cameraPath?.let { File(it).delete() }
+                            cameraPath = null
+                            cameraUri = null
+                            model.showError("Kamera açılamadı: " + e.localizedMessage)
+                        }
+                    },
+            )
+            ListItem(
+                headlineContent = { Text("Dosya") },
+                supportingContent = { Text("Görsel, PDF veya belge seç") },
+                leadingContent = { Icon(Icons.Default.FolderOpen, null) },
+                modifier =
+                    Modifier.clickable {
+                        showAttachmentSource = false
+                        files.launch(
+                            arrayOf("text/*", "image/*", "application/pdf", "application/json")
+                        )
+                    },
+            )
+            Spacer(Modifier.height(24.dp))
         }
     }
     if (showNew) {
@@ -846,13 +914,6 @@ fun WorkspaceApp(model: WorkspaceModel) {
                 TextButton(onClick = { confirmCancel = null }) { Text("Devam etsin") }
             },
         )
-    }
-}
-
-@Composable
-fun SelectionContainerCompat(text: String) {
-    androidx.compose.foundation.text.selection.SelectionContainer {
-        Text(text, style = MaterialTheme.typography.bodyLarge, lineHeight = 24.sp)
     }
 }
 
@@ -1007,4 +1068,28 @@ fun AttachmentCard(file: ChatAttachment, loading: Boolean, onClick: () -> Unit) 
                 )
         }
     }
+}
+
+private fun isActiveJob(task: JSONObject) =
+    task.optString("status") !in listOf("completed", "cancelled", "failed")
+
+@Composable
+private fun JobIndicator(status: String) {
+    val waiting = status in listOf("waiting_question", "recovery_required")
+    val transition = rememberInfiniteTransition(label = "job status")
+    val opacity by
+        transition.animateFloat(
+            initialValue = 0.35f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+            label = "status pulse",
+        )
+    val color =
+        if (waiting) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+    Box(
+        Modifier.size(12.dp)
+            .semantics { contentDescription = statusLabel(status) }
+            .alpha(if (waiting) 1f else opacity)
+            .background(color, CircleShape)
+    )
 }
