@@ -232,7 +232,24 @@ test("gateway requires pairing, rejects origins and limits external resume", asy
     ).json()) as any;
     assert.equal(
       chat.messages.find((e: any) => e.type === "task_created").payload.task,
-      "read file\n\nEkler: test.txt",
+      "read file",
+    );
+    const attachments = chat.messages.find(
+      (e: any) => e.type === "task_created",
+    ).payload.attachments;
+    assert.deepEqual(attachments, [
+      { id: upload.id, name: "test.txt", size: 18 },
+    ]);
+    const downloaded = (await (
+      await fetch(url + "/v1/attachments/" + upload.id, { headers })
+    ).json()) as any;
+    assert.equal(
+      Buffer.from(downloaded.content, "base64").toString(),
+      "attachment fixture",
+    );
+    assert.equal(
+      (await fetch(url + "/v1/attachments/" + upload.id)).status,
+      401,
     );
     assert.match(s.drivers[0]!.context.run.prompt, /User attached files/);
     const denied = await fetch(url + "/v1/sessions/messages", {

@@ -68,7 +68,7 @@ External sessions are discovered from the local provider history. Before continu
 
 - Native Android app; local SQLite cache/outbox, HTTPS API, foreground polling. No Room migration or SSE transport yet.
 - Native session and transcript pagination is supported. Provider histories are exposed only as far as the installed provider APIs permit.
-- Attachments use Android's document picker, up to 5 MiB per file and five files per message. Upload requires a connection; a queued message references an already uploaded file. Files remain in the workspace's `.orchestrator-attachments` directory; no automatic retention policy yet.
+- Attachments use Android's document picker, up to 5 MiB per file and five files per message. Upload requires a connection; a queued message references an already uploaded file. Sent attachments appear as clickable cards with filename, type and size. Text formats open in an in-app preview (first 100,000 characters); PDFs/images use an installed viewer with a temporary content-URI grant. Downloaded files are cached privately on the phone. Files remain in the workspace's `.orchestrator-attachments` directory; no automatic retention policy yet.
 - Single computer, single paired phone, fixed project for newly created sessions. No multi-user accounts or UI project picker yet.
 - Slack/email and other inherited MCP integration profiles are not implemented. The assistant must report them unavailable rather than pretend to execute them.
 - Local notifications and cache do not make the computer service available while the computer sleeps.

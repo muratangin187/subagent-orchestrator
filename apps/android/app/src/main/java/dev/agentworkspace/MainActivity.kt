@@ -129,6 +129,27 @@ fun WorkspaceApp(model: WorkspaceModel) {
         PairScreen(model, s)
         return
     }
+    s.attachmentPreview?.let { (name, content) ->
+        AlertDialog(
+            onDismissRequest = model::closeAttachmentPreview,
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            title = { Text(name, maxLines = 2) },
+            text = {
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(
+                        content,
+                        modifier =
+                            Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = model::closeAttachmentPreview) { Text("Kapat") }
+            },
+        )
+    }
     val tasks = s.snapshot.optJSONArray("tasks")?.objects() ?: emptyList()
     val jobs =
         tasks.filter {
@@ -550,6 +571,16 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                             )
                                         if (showTools) SelectionContainerCompat(line.text)
                                         else MarkdownMessage(line.text)
+                                        if (!showTools)
+                                            line.attachments.forEach { attachment ->
+                                                Spacer(Modifier.height(10.dp))
+                                                AttachmentCard(
+                                                    attachment,
+                                                    s.openingAttachment == attachment.id,
+                                                ) {
+                                                    model.openAttachment(attachment)
+                                                }
+                                            }
                                     }
                                 }
                             }
@@ -822,5 +853,74 @@ fun PairScreen(model: WorkspaceModel, s: ScreenState) {
             Modifier.padding(top = 24.dp),
             style = MaterialTheme.typography.labelSmall,
         )
+    }
+}
+
+@Composable
+fun AttachmentCard(file: ChatAttachment, loading: Boolean, onClick: () -> Unit) {
+    val type = file.name.substringAfterLast('.', "DOSYA").uppercase()
+    val icon =
+        when (type) {
+            "PNG",
+            "JPG",
+            "JPEG",
+            "WEBP" -> Icons.Default.Image
+            "PDF" -> Icons.Default.PictureAsPdf
+            else -> Icons.Default.Description
+        }
+    OutlinedCard(
+        onClick = onClick,
+        enabled = !loading,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors =
+            CardDefaults.outlinedCardColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f)
+            ),
+    ) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+            ) {
+                Icon(
+                    icon,
+                    null,
+                    Modifier.padding(10.dp).size(24.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    file.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                val size =
+                    when {
+                        file.size < 0 -> ""
+                        file.size < 1024 -> " · ${file.size} B"
+                        file.size < 1048576 -> " · ${file.size / 1024} KB"
+                        else -> " · %.1f MB".format(file.size / 1048576.0)
+                    }
+                Text(
+                    type + size,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.secondary,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            else
+                Icon(
+                    Icons.Default.OpenInNew,
+                    "Dosyayı aç",
+                    Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+        }
     }
 }

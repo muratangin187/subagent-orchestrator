@@ -14,7 +14,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class ChatLine(val id: String, val role: String, val text: String)
+data class ChatAttachment(val id: String, val name: String, val size: Long = -1)
+
+data class ChatLine(
+    val id: String,
+    val role: String,
+    val text: String,
+    val attachments: List<ChatAttachment> = emptyList(),
+)
+
+fun JSONArray.chatAttachments() =
+    objects().map {
+        ChatAttachment(it.optString("id"), it.optString("name"), it.optLong("size", -1))
+    }
 
 data class ScreenState(
     val paired: Boolean = false,
@@ -29,6 +41,8 @@ data class ScreenState(
     val pending: Int = 0,
     val rejected: List<Pair<String, String>> = emptyList(),
     val loading: Boolean = false,
+    val openingAttachment: String? = null,
+    val attachmentPreview: Pair<String, String>? = null,
     val attached: List<Pair<String, String>> = emptyList(),
 )
 
@@ -136,7 +150,14 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
         }
 
     private fun decodeLines(a: JSONArray) =
-        a.objects().map { ChatLine(it.optString("id"), it.optString("role"), it.optString("text")) }
+        a.objects().map {
+            ChatLine(
+                it.optString("id"),
+                it.optString("role"),
+                it.optString("text"),
+                it.optJSONArray("attachments")?.chatAttachments() ?: emptyList(),
+            )
+        }
 
     suspend fun refresh() {
         if (!refreshMutex.tryLock()) return
@@ -248,9 +269,15 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                                     )
                                 else -> null
                             }
-                        line?.takeIf {
-                            it.text.isNotBlank() && !it.text.startsWith("Background task event")
-                        }
+                        line
+                            ?.copy(
+                                attachments =
+                                    payload.optJSONArray("attachments")?.chatAttachments()
+                                        ?: emptyList()
+                            )
+                            ?.takeIf {
+                                it.text.isNotBlank() && !it.text.startsWith("Background task event")
+                            }
                     }
                 val current =
                     if (selected == "assistant") result.optString("assistantId") else selected
@@ -276,6 +303,17 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                                                 .put("id", it.id)
                                                 .put("role", it.role)
                                                 .put("text", it.text)
+                                                .put(
+                                                    "attachments",
+                                                    JSONArray(
+                                                        it.attachments.map { a ->
+                                                            JSONObject()
+                                                                .put("id", a.id)
+                                                                .put("name", a.name)
+                                                                .put("size", a.size)
+                                                        }
+                                                    ),
+                                                )
                                         )
                                     }
                                 }
@@ -331,7 +369,14 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
         update {
             it.copy(
                 pending = repo.local.pending().size,
-                lines = it.lines + ChatLine(id, "user", value),
+                lines =
+                    it.lines +
+                        ChatLine(
+                            id,
+                            "user",
+                            value,
+                            it.attached.map { a -> ChatAttachment(a.first, a.second) },
+                        ),
                 attached = emptyList(),
             )
         }
@@ -444,6 +489,92 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                 update { it.copy(error = e.message) }
             } finally {
                 update { it.copy(loading = false) }
+            }
+        }
+    }
+
+    fun closeAttachmentPreview() {
+        update { it.copy(attachmentPreview = null) }
+    }
+
+    fun openAttachment(attachment: ChatAttachment) {
+        if (state.value.openingAttachment != null) return
+        update { it.copy(openingAttachment = attachment.id) }
+        viewModelScope.launch {
+            try {
+                val file =
+                    withContext(Dispatchers.IO) {
+                        val dir =
+                            java.io
+                                .File(getApplication<Application>().cacheDir, "attachments")
+                                .apply { mkdirs() }
+                        val cached =
+                            java.io.File(
+                                dir,
+                                attachment.id +
+                                    "-" +
+                                    attachment.name.replace(Regex("[^\\p{L}\\p{N}._-]"), "_"),
+                            )
+                        if (!cached.exists()) {
+                            val response = repo.request("/v1/attachments/" + attachment.id)
+                            val bytes = Base64.decode(response.getString("content"), Base64.DEFAULT)
+                            require(bytes.size <= 5 * 1024 * 1024) { "Dosya sınırı 5 MiB" }
+                            val temp = java.io.File(dir, attachment.id + ".part")
+                            temp.writeBytes(bytes)
+                            check(temp.renameTo(cached)) { "Dosya kaydedilemedi" }
+                        }
+                        cached
+                    }
+                val extension = attachment.name.substringAfterLast('.', "").lowercase()
+                if (extension in setOf("txt", "md", "json", "csv", "log", "ts", "js", "py")) {
+                    val preview =
+                        withContext(Dispatchers.IO) {
+                            file.inputStream().bufferedReader().use { reader ->
+                                val buffer = CharArray(100001)
+                                var used = 0
+                                while (used < buffer.size) {
+                                    val n = reader.read(buffer, used, buffer.size - used)
+                                    if (n < 0) break
+                                    used += n
+                                }
+                                String(buffer, 0, minOf(used, 100000)) +
+                                    if (used > 100000) "\n[Önizleme ilk 100.000 karakterle sınırlı]"
+                                    else ""
+                            }
+                        }
+                    update { it.copy(attachmentPreview = attachment.name to preview) }
+                } else {
+                    val app = getApplication<Application>()
+                    val uri =
+                        androidx.core.content.FileProvider.getUriForFile(
+                            app,
+                            app.packageName + ".files",
+                            file,
+                        )
+                    val mime =
+                        android.webkit.MimeTypeMap.getSingleton()
+                            .getMimeTypeFromExtension(extension) ?: "application/octet-stream"
+                    app.startActivity(
+                        android.content
+                            .Intent(android.content.Intent.ACTION_VIEW)
+                            .setDataAndType(uri, mime)
+                            .addFlags(
+                                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                            )
+                    )
+                }
+            } catch (e: Exception) {
+                update {
+                    it.copy(
+                        error =
+                            if (e is android.content.ActivityNotFoundException)
+                                "Bu dosya türünü açacak uygulama bulunamadı."
+                            else e.message
+                    )
+                }
+            } finally {
+                update { it.copy(openingAttachment = null) }
             }
         }
     }
