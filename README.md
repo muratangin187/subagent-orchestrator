@@ -1,24 +1,30 @@
 # Standalone Agent Orchestrator
 
+[![Tests](https://github.com/muratangin187/subagent-orchestrator/actions/workflows/test.yml/badge.svg)](https://github.com/muratangin187/subagent-orchestrator/actions/workflows/test.yml) · [MIT](LICENSE) · [Mimari](docs/architecture.md) · [Doğrulama](docs/verification.md) · [Katkı](CONTRIBUTING.md)
+
+Local MCP orchestration for Codex and Claude Code: durable tasks, nested delegation, async results and explicit permission boundaries.
+
 Claude Code ve Codex alt ajanlarını, MCP destekleyen editörlerden yöneten bağımsız yerel servis. **T3 kurulumu, T3 hesabı veya T3 çalışma zamanı gerektirmez.** Sağlayıcıların kendi oturumlarını ve bilgisayardaki CLI girişlerini kullanır.
 
 Bir görevi arka planda başlatabilir, sonucu bekleyebilir, konuşmasını okuyabilir ve aynı oturuma yeni talimat gönderebilirsiniz. MCP bağlantısı kapansa da yerel servis çalışmaya devam eder. Arayüz bu sürümün kapsamı dışındadır.
 
 ## Kurulum
 
-Node.js **22.16 veya üzeri**, macOS veya Linux gerekir. Windows için WSL2 kullanın. Kullanacağınız sağlayıcının CLI aracını ayrıca kurup oturum açın: `codex login` veya `claude auth login`. Sağlayıcı kullanımı mevcut hesabınızın limitlerine ve ücretlerine tabidir.
+Node.js **22.16 veya üzeri**, macOS veya Linux gerekir. Windows yerel olarak desteklenmez; WSL2 henüz doğrulanmadı. Kullanacağınız sağlayıcının CLI aracını ayrıca kurup oturum açın: `codex login` veya `claude auth login`. Sağlayıcı kullanımı mevcut hesabınızın limitlerine ve ücretlerine tabidir.
 
 Kaynak koddan:
 
 ```sh
+git clone https://github.com/muratangin187/subagent-orchestrator.git
+cd subagent-orchestrator
 npm ci
 npm run build
 npm pack
-npm install -g ./standalone-agent-orchestrator-0.1.0.tgz
+npm install -g ./standalone-agent-orchestrator-0.1.1.tgz
 agent-orchestrator doctor
 ```
 
-Takım arkadaşınıza `.tgz` dosyasını verin. Onun yalnızca Node, sağlayıcı CLI girişi ve `npm install -g ./standalone-agent-orchestrator-0.1.0.tgz` adımı gerekir. Paket henüz npm kayıt sisteminde yayımlanmadı; `npx standalone-agent-orchestrator` komutunun yayımlanmış bir sürümü indirdiğini varsaymayın.
+Takım arkadaşınıza `.tgz` dosyasını verin. Onun yalnızca Node, sağlayıcı CLI girişi ve `npm install -g ./standalone-agent-orchestrator-0.1.1.tgz` adımı gerekir. Paket henüz npm kayıt sisteminde yayımlanmadı; `npx standalone-agent-orchestrator` komutunun yayımlanmış bir sürümü indirdiğini varsaymayın.
 
 Servis, ilk MCP bağlantısında otomatik başlar. Çalışma verisi varsayılan olarak `~/.local/share/agent-orchestrator/` altında saklanır. `--home /başka/dizin` ayrı bir servis ve veri alanı oluşturur. Kısa, yerel bir yol kullanın; Unix soket yollarının platforma bağlı uzunluk sınırı vardır. Ağ dosya sistemi kullanmayın.
 
@@ -167,3 +173,37 @@ npm pack --dry-run
 ```
 
 Normal testler gerçek model çağırmaz. `test:live*` yerel sağlayıcı hesabınızı kullanır ve kısa gerçek model çağrıları yapar. Testler geçici çalışma dizinleri oluşturup kendi süreçlerini durdurur. Ayrıntılar: [mimari ve şartname incelemesi](docs/architecture.md), [test kanıtları](docs/verification.md).
+
+### Kota ve hız sınırı bildirimleri
+
+Sağlayıcı kota hatasıyla durduğunda görev `failed` olur. `wait_for_task`,
+`get_task_status` ve üst ajanın `get_notifications` çıktısı `failure` alanını
+sunar: `kind` (`usage_limit` veya `rate_limit`), `provider`, varsa `resetHint`,
+`automaticRetry: false` ve sonraki adım. `resetHint` sağlayıcının özgün ifadesidir;
+tarihi belirsiz saatleri kesin zaman damgasına çevirmeyiz. Ham hata da korunur.
+
+O görev için önceden sıraya alınmış mesajlar `held` durumuna alınır; otomatik
+tekrar yapılmaz. Limit kalkınca `send_to_subagent` ile yeni, açık bir devam
+mesajı gönderin; bekletilen eski mesajlar kendiliğinden çalışmaz. Önceki turun
+hata kaydı değişmez. İç içe görevlerde bildirim doğrudan çağıran üst ajana gider.
+Üst ajan durumu kullanıcıya raporlamalıdır. MCP bütün istemcilerde sohbeti
+kendiliğinden uyandıramaz: üst ajan bildirimleri okumalı veya sonucu beklemelidir.
+
+### Yanlış CLI sürümü veya model görünmüyor
+
+Birden fazla CLI kurulumu varsa `which -a codex` / `which -a claude` ile yolları,
+her yol için `--version` ile sürümleri karşılaştırın. MCP sunucusunun ortamına
+`ORCHESTRATOR_CODEX_BIN` ve/veya `ORCHESTRATOR_CLAUDE_BIN` değişkenini ekleyerek
+kullanılacak çalıştırılabilir dosyanın mutlak yolunu belirtin. Örneğin Codex ayarı:
+
+```toml
+[mcp_servers.subagent_orchestrator.env]
+ORCHESTRATOR_CODEX_BIN = "/absolute/path/to/codex"
+ORCHESTRATOR_CLAUDE_BIN = "/absolute/path/to/claude"
+```
+
+Claude Code ve VS Code JSON ayarlarında aynı değişkenleri sunucunun `env`
+nesnesine ekleyin. Servis başlangıç ortamını korur: aktif işleri bitirin,
+`agent-orchestrator stop` çalıştırın ve MCP bağlantısını yeni ortamla yenileyin.
+`stop` çalışan sağlayıcı süreçlerini de durdurur. `doctor` kabuğun PATH'ini,
+`models` ise çalışan servisin Codex kataloğunu kontrol eder.

@@ -509,3 +509,49 @@ test("list pagination does not lose tasks created in the same millisecond", asyn
     await s.close();
   }
 });
+
+test("quota failure notifies parent, holds queued work, preserves run evidence on explicit retry", async () => {
+  const s = setup();
+  try {
+    const task = await delegate(s.engine, { provider: "claude" });
+    await tick();
+    await s.engine.call(scope, "send_to_subagent", {
+      taskId: task.taskId,
+      message: "queued work",
+      mode: "queue",
+      clientRequestId: "queued-before-limit",
+    });
+    s.drivers[0]!.reject!(
+      new Error(
+        "Claude HTTP 429: You've hit your session limit · resets 9:40pm (Europe/Istanbul)",
+      ),
+    );
+    const result = (await s.engine.wait(scope, task.taskId, 1000)) as any;
+    assert.equal(result.failure.kind, "usage_limit");
+    assert.equal(result.failure.resetHint, "9:40pm (Europe/Istanbul)");
+    const notices = (await s.engine.call(
+      scope,
+      "get_notifications",
+      {},
+    )) as any;
+    assert.equal(notices.notifications.length, 1);
+    assert.equal(notices.notifications[0].runId, task.runId);
+    assert.deepEqual(notices.notifications[0].failure, result.failure);
+    assert.equal(s.store.commands("held").length, 1);
+    await tick();
+    assert.equal(s.drivers.length, 1);
+    const oldRun = s.store.run(task.runId);
+    await s.engine.call(scope, "send_to_subagent", {
+      taskId: task.taskId,
+      message: "quota restored, continue",
+      mode: "queue",
+      clientRequestId: "explicit-retry",
+    });
+    await tick();
+    assert.equal(s.drivers.length, 2);
+    assert.equal(s.store.task(task.taskId).failure, undefined);
+    assert.deepEqual(s.store.run(task.runId), oldRun);
+  } finally {
+    await s.close();
+  }
+});

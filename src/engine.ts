@@ -1,3 +1,4 @@
+import { classifyFailure } from "./providers/failure.js";
 import { fileURLToPath } from "node:url";
 import { providerCapabilities } from "./providers/capabilities.js";
 import { z } from "zod";
@@ -621,6 +622,8 @@ export class Engine {
           t.status = "pending";
           delete t.question;
           delete t.error;
+          delete t.failure;
+          delete t.resultSummary;
           this.store.saveRun(r);
           this.touch(t);
           this.store.event(t, "user_message", {
@@ -756,15 +759,23 @@ export class Engine {
     r.status = status;
     r.result = result;
     r.error = error;
+    r.failure = classifyFailure(t.provider, error);
     r.finishedAt = Date.now();
     t.status = status;
     if (result !== undefined) t.resultSummary = result;
     t.error = error;
+    t.failure = r.failure;
     delete t.question;
     this.store.transaction(() => {
       this.store.saveRun(r);
       this.touch(t);
-      this.store.event(t, status, { result, error });
+      if (t.failure) {
+        for (const cmd of this.store
+          .commands("queued")
+          .filter((c) => c.taskId === t.id))
+          this.store.command(cmd.id, t.id, "held", cmd.data);
+      }
+      this.store.event(t, status, { result, error, failure: t.failure });
       this.store.notify(t);
     });
   }

@@ -261,3 +261,39 @@ test("nested model and provider inherit only within the same provider", async ()
     await s.close();
   }
 });
+
+test("nested quota notification belongs to the immediate parent", async () => {
+  const s = setup();
+  try {
+    const job = (await s.engine.call(root, "delegate_task", {
+      task: "Parent",
+      runtimeMode: "read-only",
+    })) as any;
+    await pause();
+    const parent = scopeFor(job.taskId);
+    const child = (await s.engine.call(parent, "delegate_task", {
+      task: "Child",
+      provider: "claude",
+    })) as any;
+    await pause();
+    s.drivers[1]!.reject!(
+      new Error("Claude HTTP 429: You've hit your session limit"),
+    );
+    const result = (await s.engine.wait(parent, child.taskId, 1000)) as any;
+    assert.equal(result.failure.kind, "usage_limit");
+    const notices = (await s.engine.call(
+      parent,
+      "get_notifications",
+      {},
+    )) as any;
+    assert.equal(notices.notifications[0].parentTaskId, job.taskId);
+    assert.equal(notices.notifications[0].failure.provider, "claude");
+    assert.equal(
+      ((await s.engine.call(root, "get_notifications", {})) as any)
+        .notifications.length,
+      0,
+    );
+  } finally {
+    await s.close();
+  }
+});

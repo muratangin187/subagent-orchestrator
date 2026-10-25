@@ -1,6 +1,6 @@
 {
   "name": "standalone-agent-orchestrator",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local, durable Claude Code and Codex subagent orchestration over MCP",
   "type": "module",
   "bin": {
@@ -42,5 +42,20 @@
     "prettier": "3.9.10",
     "tsx": "4.23.15",
     "typescript": "7.0.2"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/muratangin187/subagent-orchestrator.git"
+  },
+  "homepage": "https://github.com/muratangin187/subagent-orchestrator#readme",
+  "bugs": {
+    "url": "https://github.com/muratangin187/subagent-orchestrator/issues"
+  },
+  "keywords": [
+    "mcp",
+    "codex",
+    "claude-code",
+    "subagents",
+    "orchestration"
+  ]
 }

@@ -56,7 +56,7 @@ Codex model testinde canlı katalogda varsayılan olarak sunulan `gpt-5.6-sol` k
 
 TypeScript kontrolü, biçim kontrolü ve npm paketleme yapılır. Kurulabilir `.tgz`, geçici bir npm prefix'ine kurularak CLI ve MCP bağlantısı denenir; kişisel/global editör ayarları değiştirilmez.
 
-Bu kayıt kapsamındaki canlı testler macOS içindir. Linux ve WSL canlı sağlayıcı testi, VS Code/Claude Code arayüzünde elle bağlantı, uzun süreli yük testi, sağlayıcı kota tükenmesi ve tam makine yeniden başlatması bu teslimde doğrulanmadı. CI macOS ve Linux üzerinde Node 22/24 için tanımlıdır; uzak CI çalıştırıldığı iddia edilmez. Yapılandırılmış soruların otomatik testi vardır; sağlayıcı modellerinin her zaman soru aracını seçeceği garanti edilmez.
+Bu kayıt kapsamındaki canlı testler macOS içindir. Linux ve WSL canlı sağlayıcı testi, VS Code/Claude Code arayüzünde elle bağlantı, uzun süreli yük testi ve tam makine yeniden başlatması bu teslimde doğrulanmadı. CI macOS ve Linux üzerinde Node 22/24 için tanımlıdır; uzak CI çalıştırıldığı iddia edilmez. Yapılandırılmış soruların otomatik testi vardır; sağlayıcı modellerinin her zaman soru aracını seçeceği garanti edilmez.
 
 ## Son tekrar sırasında görülen gerçek kota hatası
 
@@ -65,3 +65,16 @@ Bu kayıt kapsamındaki canlı testler macOS içindir. Linux ve WSL canlı sağl
 Gerçek SDK çıktısı `subtype: success` ile birlikte `is_error: true` gönderiyordu. Adaptör yalnızca subtype'a bakınca kota metnini başarılı sonuç sayıyordu. `is_error` kontrolü eklendi; yakalanan gerçek veri şekli regresyon testine alındı. Kota ve kimlik doğrulama hataları artık başarısız görev olarak kaydedilir. Limit sonrası yeni bir başarılı Claude model turu doğrulanmış değildir.
 
 Düzeltmeden sonra gerçek kota yanıtı motor üzerinden yeniden doğrulandı: durum `failed`, hata `Claude HTTP 429: ... session limit`. Son otomatik koşum **31/31** geçti. Paket ayrı bir npm prefix'ine kuruldu; kurulan komutla MCP initialize/list/call akışı tamamlandı ve 10 araç, üç katman sınırı, toplam 12 sağlayıcı süreci üst sınırı doğru döndü.
+
+## 0.1.1 doğrulaması
+
+34 otomatik test geçti. Kota sınıflandırması, kuyruğun bekletilmesi, açık devamda
+eski turun korunması ve iç içe görevlerde doğrudan üst ajana bildirim test edildi.
+Gerçek Claude HTTP 429 yanıtında `failure.kind=usage_limit`, sağlayıcının yenilenme
+ifadesi ve görev/tur kimlikleri üst ajanın kalıcı bildiriminde doğrulandı.
+
+Aynı makinedeki ikinci Codex kurulumu (0.164.0) açık yolla seçildiğinde katalogda
+`gpt-6.1-sol` görüldü; bu modelle gerçek alt ajan `MODEL_OK` yanıtıyla tamamlandı.
+Bu sonuç tüm model/protokol senaryolarının yeni sürümde yeniden test edildiği
+anlamına gelmez. Kullanılan CLI yolu önemlidir; eski servis ortamı PATH değişimini
+kendiliğinden almaz.

@@ -18,6 +18,13 @@ export interface Scope {
   ceiling: RuntimeMode;
   interactionMode: "plan" | "default";
 }
+export interface ProviderFailure {
+  kind: "usage_limit" | "rate_limit";
+  provider: Provider;
+  resetHint?: string;
+  automaticRetry: false;
+  action: "Wait for provider availability, then send an explicit continuation. Report this failure to the user.";
+}
 export interface Task {
   id: string;
   owner: string;
@@ -41,6 +48,7 @@ export interface Task {
   createdAt: number;
   updatedAt: number;
   error?: string;
+  failure?: ProviderFailure;
   resultSummary?: string;
   question?: { id: string; prompt: unknown };
   cancelled: boolean;
@@ -55,6 +63,7 @@ export interface Run {
   finishedAt?: number;
   result?: string;
   error?: string;
+  failure?: ProviderFailure;
 }
 export interface ProviderEvent {
   type: string;
