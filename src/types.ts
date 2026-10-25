@@ -26,6 +26,8 @@ export interface ProviderFailure {
   action: "Wait for provider availability, then send an explicit continuation. Report this failure to the user.";
 }
 export interface Task {
+  conversationKind?: "assistant" | "session";
+  instructions?: string;
   id: string;
   owner: string;
   rootOwner?: string;

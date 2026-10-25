@@ -130,6 +130,12 @@ export async function ensureDaemon(home: string) {
 }
 export async function serve(
   home: string,
+  workspace?: {
+    cwd: string;
+    ceiling: import("./types.js").RuntimeMode;
+    port: number;
+    model?: string;
+  },
 ): Promise<{ server: Server; close: () => Promise<void> }> {
   if (process.platform === "win32")
     throw new Error(
@@ -259,9 +265,26 @@ export async function serve(
         resolve();
       });
     });
+    let gateway: { close: () => Promise<void> } | undefined;
+    if (workspace) {
+      const { WorkspaceController } = await import("./workspace/controller.js");
+      const { startGateway } = await import("./workspace/gateway.js");
+      gateway = await startGateway(
+        new WorkspaceController(
+          owner,
+          store,
+          workspace.cwd,
+          workspace.ceiling,
+          workspace.model,
+        ),
+        home,
+        workspace.port,
+      );
+    }
     let closePromise: Promise<void> | undefined;
     const close = () =>
       (closePromise ??= (async () => {
+        await gateway?.close();
         server!.close();
         await owner.close();
         server!.closeAllConnections();

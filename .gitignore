@@ -12,3 +12,12 @@ coverage/
 *.sqlite-wal
 *.sqlite-shm
 *.log
+
+apps/android/.gradle/
+apps/android/**/build/
+apps/android/local.properties
+.orchestrator-attachments/
+*.apk
+
+# Personal Firebase app configuration stays local. Never commit service-account keys.
+apps/android/app/google-services.json

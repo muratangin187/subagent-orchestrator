@@ -343,3 +343,7 @@ Tasarım sırasında [T3 Code](https://github.com/pingdotgg/t3code) orkestrasyon
 **[MIT lisansı](LICENSE)** · Yerel orkestrasyon, açık kaynak.
 
 </div>
+
+### Android companion (alpha)
+
+A native Android app adds a persistent assistant chat, local Codex/Claude sessions, a job drawer, attachments and optional privacy-preserving FCM notifications. See the [setup and current limitations](docs/android-workspace.md). The published 0.1.1 package does not include this unreleased companion; use this branch’s checkout build.

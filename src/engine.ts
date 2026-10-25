@@ -126,6 +126,15 @@ export class Engine {
   async call(scope: Scope, tool: Tool, input: unknown): Promise<unknown> {
     if (scope.parentTaskId) {
       const parent = this.store.task(scope.parentTaskId);
+      if (
+        parent.conversationKind === "assistant" &&
+        (tool === "wait_for_task" ||
+          (tool === "delegate_task" && (input as any)?.mode === "wait"))
+      )
+        throw new OrchestratorError(
+          "async_only",
+          "Assistant must delegate async and end its turn. Child events are delivered automatically.",
+        );
       if (scope.id !== `child:${parent.id}`)
         throw new OrchestratorError(
           "invalid_scope",

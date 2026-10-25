@@ -19,6 +19,8 @@ const { values, positionals } = parseArgs({
     ceiling: { type: "string" },
     plan: { type: "boolean" },
     help: { type: "boolean" },
+    port: { type: "string" },
+    model: { type: "string" },
   },
 });
 const home = resolve(values.home ?? defaultHome());
@@ -27,6 +29,7 @@ async function main() {
   if (command === "help" || values.help) {
     console.log(`agent-orchestrator <command> [options]
   mcp       Stdio MCP bridge; starts background service automatically
+  workspace Start the Android API and persistent assistant (use a separate --home)
   daemon    Run service in foreground (for systemd/launchd or diagnostics)
   status    Inspect service health
   stop      Stop this instance and its provider processes
@@ -61,8 +64,21 @@ Unix/macOS/Linux supported; use WSL2 on Windows.`);
     );
     return;
   }
-  if (command === "daemon") {
-    const service = await serve(home);
+  if (command === "daemon" || command === "workspace") {
+    const port = Number(values.port ?? 8787);
+    if (!Number.isInteger(port) || port < 1 || port > 65535)
+      throw Error("Invalid port");
+    const service = await serve(
+      home,
+      command === "workspace"
+        ? {
+            cwd: realpathSync(values.cwd ?? process.cwd()),
+            ceiling: runtime.parse(values.ceiling ?? "read-only"),
+            port,
+            model: values.model,
+          }
+        : undefined,
+    );
     console.error(`Orchestrator ready: ${home}`);
     let stopping = false;
     const stop = () => {
