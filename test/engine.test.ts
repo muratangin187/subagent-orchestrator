@@ -74,7 +74,8 @@ test("idempotency is atomic, scoped and rejects payload conflicts", async () => 
       ),
     );
     assert.equal(new Set(results.map((r) => r.taskId)).size, 1);
-    await tick();
+    const deadline = Date.now() + 5000;
+    while (s.drivers.length === 0 && Date.now() < deadline) await tick();
     assert.equal(s.drivers.length, 1);
     await assert.rejects(
       delegate(s.engine, { clientRequestId: "same", task: "different" }),
