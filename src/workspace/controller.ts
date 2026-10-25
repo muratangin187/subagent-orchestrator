@@ -15,6 +15,7 @@ type Input = {
   kind: "assistant" | "session";
   title?: string;
   cwd?: string;
+  displayText?: string;
 };
 export class WorkspaceController {
   readonly scope: Scope;

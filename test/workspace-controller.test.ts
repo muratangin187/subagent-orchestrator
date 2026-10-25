@@ -225,6 +225,16 @@ test("gateway requires pairing, rejects origins and limits external resume", asy
     assert.equal((await post("/v1/sessions/messages", input)).status, 400);
     await tick();
     assert.equal(s.drivers.length, 1);
+    const chat = (await (
+      await fetch(url + "/v1/messages?taskId=" + s.c.get("assistant"), {
+        headers,
+      })
+    ).json()) as any;
+    assert.equal(
+      chat.messages.find((e: any) => e.type === "task_created").payload.task,
+      "read file\n\nEkler: test.txt",
+    );
+    assert.match(s.drivers[0]!.context.run.prompt, /User attached files/);
     const denied = await fetch(url + "/v1/sessions/messages", {
       method: "POST",
       headers,
