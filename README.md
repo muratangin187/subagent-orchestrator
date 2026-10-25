@@ -14,7 +14,7 @@ Codex ve Claude Code için yerel, kalıcı ve iç içe alt ajan orkestrasyonu.
 [![MCP](https://img.shields.io/badge/Protocol-MCP-0f766e)](src/mcp.ts)
 [![MIT](https://img.shields.io/badge/License-MIT-a855f7)](LICENSE)
 
-[Hızlı başlangıç](#hızlı-başlangıç) · [Nasıl çalışır?](#nasıl-çalışır) · [Araçlar](#mcp-araçları) · [Belgeler](#belgeler) · [Katkı](CONTRIBUTING.md)
+[Android ve sesli asistan](#android) · [Hızlı başlangıç](#hızlı-başlangıç) · [Nasıl çalışır?](#nasıl-çalışır) · [Araçlar](#mcp-araçları) · [Belgeler](#belgeler) · [Katkı](CONTRIBUTING.md)
 
 <sub>Local MCP orchestration for Codex and Claude Code. Durable tasks, nested delegation, and explicit permission boundaries.</sub>
 
@@ -344,6 +344,35 @@ Tasarım sırasında [T3 Code](https://github.com/pingdotgg/t3code) orkestrasyon
 
 </div>
 
-### Android companion (alpha)
+<a id="android"></a>
 
-A native Android app adds a persistent assistant chat, local Codex/Claude sessions, a job drawer, attachments and optional privacy-preserving FCM notifications. See the [setup and current limitations](docs/android-workspace.md). The published 0.1.1 package does not include this unreleased companion; use this branch’s checkout build.
+### Android uygulaması · 0.2.0-alpha.1
+
+<img src="apps/android/app/src/main/res/drawable-nodpi/assistant_avatar.png" alt="Sesli asistan avatarı" width="160" align="right" />
+
+**Bilgisayarındaki ajanlar, cebindeki tek asistan.** Tailscale üzerinden yerel
+sunucuna bağlan; aynı Codex asistanına yaz veya konuş. Uzun işler alt ajanlarda
+ilerlerken başka konulara geçebilir, sonuçları aynı sohbetten takip edebilirsin.
+
+| Ekran | Yapabileceklerin |
+| :--- | :--- |
+| **Asistan** | Kalıcı sohbet, Markdown, dosya ekleme ve bekleyen sorulara cevap |
+| **Sesli görüşme** | Avatar, Türkçe konuşma, ElevenLabs ses seçimi, mikrofon/ses kontrolü |
+| **Oturumlar** | Codex/Claude geçmişi, yeni oturumlar, sağlayıcı filtresi ve arama |
+| **İşler** | Alt ajanların durumu, aktif iş filtresi ve görev sohbetleri |
+| **Dosyalar** | PDF, görsel ve HTML önizleme; başka uygulamada açma |
+
+[**APK indir →**](https://github.com/muratangin187/subagent-orchestrator/releases/tag/v0.2.0-alpha.1)
+· [Kurulum ve sınırlar](docs/android-workspace.md)
+· [Release derleme](docs/android-release.md)
+
+1. Bilgisayarına aynı release içindeki Node paketini kur.
+2. [Sunucuyu başlat ve Tailscale HTTPS'i ayarla](docs/android-workspace.md).
+3. Android 9+ telefonuna APK'yı yükle; adres ve tek kullanımlık kodla eşleştir.
+4. Sesli görüşme için **Ayarlar** bölümüne kendi ElevenLabs anahtarını ekle.
+
+> **Alpha sürüm:** Public APK kişisel Firebase yapılandırması içermez; ön planda
+> güncellemeler çalışır. Ekran kapalı bildirim için kendi Firebase projenle derle.
+> Bilgisayar açık ve erişilebilir olmalı. Sesli görüşme sırayla konuşma/yanıt alma
+> şeklindedir; tam çift yönlü değildir. ElevenLabs ses ve yanıt metnini işler.
+> Slack/e-posta entegrasyon profilleri henüz uygulamaya taşınmadı.

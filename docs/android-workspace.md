@@ -4,11 +4,10 @@ A native Kotlin/Compose companion for a computer running the standalone orchestr
 
 ## Run the computer service
 
-Requires the repository build, Node 22.16+, signed-in Codex/Claude CLIs, and Tailscale on both devices. Use a separate state directory so the mobile service does not interfere with existing MCP daemons:
+Requires the matching release package or repository build, Node 22.16+, signed-in Codex/Claude CLIs, and Tailscale on both devices. Use a separate state directory so the mobile service does not interfere with existing MCP daemons:
 
 ```sh
-npm ci
-npm run build
+npm install -g https://github.com/muratangin187/subagent-orchestrator/releases/download/v0.2.0-alpha.1/standalone-agent-orchestrator-0.2.0-alpha.1.tgz
 agent-orchestrator workspace --home "$HOME/.local/share/agent-workspace" \
   --cwd /absolute/path/to/project --model YOUR_SUPPORTED_CODEX_MODEL --port 8787
 ```

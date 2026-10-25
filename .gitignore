@@ -23,3 +23,9 @@ apps/android/local.properties
 apps/android/app/google-services.json
 
 apps/android/.kotlin/
+
+# Android signing material must remain outside version control.
+*.jks
+*.keystore
+*.lineage
+*.idsig

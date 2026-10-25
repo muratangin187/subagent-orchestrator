@@ -3,7 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
-if (file("google-services.json").exists()) apply(plugin = "com.google.gms.google-services")
+if (providers.gradleProperty("withFirebase").orNull != "false" && file("google-services.json").exists()) apply(plugin = "com.google.gms.google-services")
 
 android {
     namespace = "dev.agentworkspace"
@@ -12,9 +12,14 @@ android {
         applicationId = "dev.agentworkspace"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
+        versionCode = 2
         versionName = "0.2.0-alpha.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+    buildTypes {
+        getByName("release") {
+            isDebuggable = false
+        }
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
