@@ -35,6 +35,11 @@ class Fake implements Driver {
   async steer() {}
 }
 const tick = () => new Promise((r) => setTimeout(r, 30));
+async function until(ready: () => boolean) {
+  const deadline = Date.now() + 5000;
+  while (!ready() && Date.now() < deadline) await tick();
+  assert.ok(ready(), "Expected asynchronous state within 5 seconds");
+}
 function setup() {
   const home = mkdtempSync(join(tmpdir(), "workspace-test-"));
   const store = new Store(join(home, "state.sqlite"));
@@ -82,7 +87,7 @@ test("assistant ends its turn, child result resumes same native session exactly 
       provider: "codex",
       body: "Start work",
     });
-    await tick();
+    await until(() => s.drivers.length >= 1 && !!s.drivers[0]?.context);
     const root = s.c.get("assistant")!;
     assert.equal(s.store.task(root).conversationKind, "assistant");
     const childScope = {
@@ -101,9 +106,9 @@ test("assistant ends its turn, child result resumes same native session exactly 
       task: "Do work",
       mode: "async",
     })) as any;
-    await tick();
+    await until(() => s.drivers.length >= 2 && !!s.drivers[1]?.context);
     s.drivers[0]!.resolve("Started.");
-    await tick();
+    await until(() => s.store.task(root).status === "completed");
     s.c.submit({
       id: "u2",
       target: "assistant",
@@ -111,14 +116,14 @@ test("assistant ends its turn, child result resumes same native session exactly 
       provider: "codex",
       body: "Another topic",
     });
-    await tick();
+    await until(() => s.drivers.length >= 3 && !!s.drivers[2]?.context);
     assert.equal(s.drivers[2]!.context.task.sessionId, "native-session");
     assert.equal(s.store.task(child.taskId).status, "running");
     s.drivers[2]!.resolve("Answer to another topic");
     s.drivers[1]!.resolve("Verified result");
     await tick();
     await s.c.pump();
-    await tick();
+    await until(() => s.drivers.length >= 4 && !!s.drivers[3]?.context);
     assert.equal(s.drivers.length, 4);
     assert.match(s.drivers[3]!.context.run.prompt, /Verified result/);
     s.drivers[3]!.resolve("Result summary");
