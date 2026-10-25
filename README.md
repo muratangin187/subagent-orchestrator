@@ -1,18 +1,96 @@
+<div align="center">
+
 # Standalone Agent Orchestrator
 
-[![Tests](https://github.com/muratangin187/subagent-orchestrator/actions/workflows/test.yml/badge.svg)](https://github.com/muratangin187/subagent-orchestrator/actions/workflows/test.yml) · [MIT](LICENSE) · [Mimari](docs/architecture.md) · [Doğrulama](docs/verification.md) · [Katkı](CONTRIBUTING.md)
+### Bir sohbet. Birden fazla ajan. Kontrol sizde.
 
-Local MCP orchestration for Codex and Claude Code: durable tasks, nested delegation, async results and explicit permission boundaries.
+Codex ve Claude Code için yerel, kalıcı ve iç içe alt ajan orkestrasyonu.
+<br />
+**MCP ile bağlanın. Görevleri dağıtın. Aynı oturumda devam edin.**
 
-Claude Code ve Codex alt ajanlarını, MCP destekleyen editörlerden yöneten bağımsız yerel servis. **T3 kurulumu, T3 hesabı veya T3 çalışma zamanı gerektirmez.** Sağlayıcıların kendi oturumlarını ve bilgisayardaki CLI girişlerini kullanır.
+[![CI](https://github.com/muratangin187/subagent-orchestrator/actions/workflows/test.yml/badge.svg)](https://github.com/muratangin187/subagent-orchestrator/actions/workflows/test.yml)
+[![Release](https://img.shields.io/github/v/release/muratangin187/subagent-orchestrator?color=6366f1)](https://github.com/muratangin187/subagent-orchestrator/releases/latest)
+[![Node](https://img.shields.io/badge/Node.js-%E2%89%A522.16-339933?logo=nodedotjs&logoColor=white)](package.json)
+[![MCP](https://img.shields.io/badge/Protocol-MCP-0f766e)](src/mcp.ts)
+[![MIT](https://img.shields.io/badge/License-MIT-a855f7)](LICENSE)
 
-Bir görevi arka planda başlatabilir, sonucu bekleyebilir, konuşmasını okuyabilir ve aynı oturuma yeni talimat gönderebilirsiniz. MCP bağlantısı kapansa da yerel servis çalışmaya devam eder. Arayüz bu sürümün kapsamı dışındadır.
+[Hızlı başlangıç](#hızlı-başlangıç) · [Nasıl çalışır?](#nasıl-çalışır) · [Araçlar](#mcp-araçları) · [Belgeler](#belgeler) · [Katkı](CONTRIBUTING.md)
 
-## Kurulum
+<sub>Local MCP orchestration for Codex and Claude Code. Durable tasks, nested delegation, and explicit permission boundaries.</sub>
 
-Node.js **22.16 veya üzeri**, macOS veya Linux gerekir. Windows yerel olarak desteklenmez; WSL2 henüz doğrulanmadı. Kullanacağınız sağlayıcının CLI aracını ayrıca kurup oturum açın: `codex login` veya `claude auth login`. Sağlayıcı kullanımı mevcut hesabınızın limitlerine ve ücretlerine tabidir.
+</div>
 
-Kaynak koddan:
+---
+
+> “Bu üç işi incele. Her biri için bir alt ajan başlat. Gerekirse kendi test ajanlarını açsınlar. Ben ana sohbette devam ederken sonuçları topla.”
+
+Bu proje, bu akışı MCP destekleyen bir istemciden yürütmenizi sağlar. Her görev kendi sağlayıcı oturumunu, tur geçmişini ve sonuçlarını korur. Ana sohbetten yeni bilgi gönderebilir, belirli bir sonucu bekleyebilir veya bütün bir alt ağacı iptal edebilirsiniz.
+
+**T3 kurulumu, T3 hesabı veya T3 çalışma zamanı gerekmez.** Sağlayıcıların bilgisayarınızdaki CLI araçlarını ve mevcut girişlerini kullanır. Model çağrıları ilgili sağlayıcıya gider; orkestrasyon servisi ve görev kayıtları yereldir.
+
+## Neler sunar?
+
+| | Özellik | Ne işe yarar? |
+| :--- | :--- | :--- |
+| ↳ | **İç içe delegasyon** | İş ajanları kendi test, araştırma ve uygulama ajanlarını başlatabilir. |
+| ⇄ | **İki sağlayıcı** | Codex ve Claude Code aynı görev ağacında çalışabilir. |
+| ◷ | **Asenkron veya beklemeli** | Arka planda devam edin ya da belirli turun sonucunu bekleyin. |
+| ↻ | **Aynı oturumda devam** | Yeni bilgiler, kuyruk mesajları ve desteklenen sağlayıcıda aktif yönlendirme. |
+| ▣ | **Kalıcı kayıtlar** | SQLite üzerinde görevler, değişmeyen tur sonuçları, olaylar ve bildirimler. |
+| ⎇ | **Worktree izolasyonu** | Bağımsız uygulama işleri için ayrı Git checkout'ları. |
+| ⛨ | **İzin mirası** | Salt okunur varsayılan; çocuklar üst ajanın izin tavanını aşamaz. |
+| ! | **Kota farkındalığı** | Kota/hız sınırı hatası, varsa yenilenme bilgisi ve bekletilen kuyruk. |
+
+## Nasıl çalışır?
+
+```mermaid
+flowchart TB
+    U["Ana sohbet · Codex / Claude Code / VS Code"]
+    M["MCP köprüsü"]
+    O["Yerel orkestrasyon servisi"]
+    D[("SQLite · görevler, turlar, bildirimler")]
+    A["İş A · Codex"]
+    B["İş B · Claude Code"]
+    C["İş C · Codex"]
+    T["Test ajanı"]
+    R["İnceleme ajanı"]
+    U <--> M
+    M <--> O
+    O <--> D
+    O --> A & B & C
+    A --> T
+    B --> R
+    classDef control fill:#eef2ff,stroke:#6366f1,color:#312e81
+    classDef agent fill:#ecfdf5,stroke:#10b981,color:#064e3b
+    class U,M,O,D control
+    class A,B,C,T,R agent
+```
+
+MCP köprüsünün kapanması görevleri durdurmaz; onları bağımsız yerel servis yönetir. Çocuk sonuçları doğrudan çağıran üst ajana döner. Varsayılan sınır **üç ajan katmanı**, **katman başına dört çalışan süreçtir**; ana sohbet katmana dahil değildir.
+
+> [!IMPORTANT]
+> Bildirimler kalıcıdır; ancak standart MCP her istemcide ana sohbeti kendiliğinden uyandıramaz. Üst ajan `get_notifications` çağırmalı veya `wait_for_task` ile beklemelidir. Ana sohbetin geçmişi ve diğer MCP araçları çocuklara otomatik aktarılmaz.
+
+## Hızlı başlangıç
+
+### 1. Gereksinimleri hazırlayın
+
+- **Node.js ≥ 22.16** ve npm.
+- macOS veya Linux. Yerel Windows desteği yok; WSL2 henüz doğrulanmadı.
+- Kullanacağınız sağlayıcı için kurulu, giriş yapılmış CLI: `codex login` ve/veya `claude auth login`.
+- Worktree kullanacaksanız Git ve en az bir commit içeren depo.
+
+### 2. Paketi kurun
+
+[v0.1.1 release](https://github.com/muratangin187/subagent-orchestrator/releases/tag/v0.1.1) paketini doğrudan kurabilirsiniz:
+
+```sh
+npm install -g https://github.com/muratangin187/subagent-orchestrator/releases/download/v0.1.1/standalone-agent-orchestrator-0.1.1.tgz
+agent-orchestrator doctor
+```
+
+<details>
+<summary><strong>Kaynak koddan kurmak istiyorum</strong></summary>
 
 ```sh
 git clone https://github.com/muratangin187/subagent-orchestrator.git
@@ -21,22 +99,46 @@ npm ci
 npm run build
 npm pack
 npm install -g ./standalone-agent-orchestrator-0.1.1.tgz
-agent-orchestrator doctor
 ```
 
-Takım arkadaşınıza `.tgz` dosyasını verin. Onun yalnızca Node, sağlayıcı CLI girişi ve `npm install -g ./standalone-agent-orchestrator-0.1.1.tgz` adımı gerekir. Paket henüz npm kayıt sisteminde yayımlanmadı; `npx standalone-agent-orchestrator` komutunun yayımlanmış bir sürümü indirdiğini varsaymayın.
+Paket henüz npm kayıt sisteminde yayımlanmadı. `npx standalone-agent-orchestrator` ile yayımlanmış bir paket indireceğinizi varsaymayın.
 
-Servis, ilk MCP bağlantısında otomatik başlar. Çalışma verisi varsayılan olarak `~/.local/share/agent-orchestrator/` altında saklanır. `--home /başka/dizin` ayrı bir servis ve veri alanı oluşturur. Kısa, yerel bir yol kullanın; Unix soket yollarının platforma bağlı uzunluk sınırı vardır. Ağ dosya sistemi kullanmayın.
+</details>
 
-## Editöre bağlama
+### 3. İstemcinize bağlayın
 
-Örnekleri kendi proje yolunuza göre üretin:
+Örneklerdeki `/absolute/path/to/project` değerini kendi proje yolunuzla değiştirin. Varsayılan yetki **salt okunurdur**.
 
-```sh
-agent-orchestrator config --cwd /absolute/path/to/project
+<details open>
+<summary><strong>Codex</strong> · <code>~/.codex/config.toml</code></summary>
+
+```toml
+[mcp_servers.subagent_orchestrator]
+command = "agent-orchestrator"
+args = ["mcp", "--cwd", "/absolute/path/to/project"]
+tool_timeout_sec = 75
 ```
 
-VS Code `.vscode/mcp.json`:
+</details>
+
+<details>
+<summary><strong>Claude Code</strong> · proje <code>.mcp.json</code> dosyası</summary>
+
+```json
+{
+  "mcpServers": {
+    "subagent_orchestrator": {
+      "command": "agent-orchestrator",
+      "args": ["mcp", "--cwd", "/absolute/path/to/project"]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><strong>VS Code</strong> · <code>.vscode/mcp.json</code></summary>
 
 ```json
 {
@@ -50,160 +152,194 @@ VS Code `.vscode/mcp.json`:
 }
 ```
 
-Claude Code proje `.mcp.json`:
+</details>
+
+İstemcinizde MCP bağlantısını etkinleştirin ve oturumu/araç listesini yenileyin. Komut bulunamıyorsa `command` alanına `agent-orchestrator` dosyasının mutlak yolunu yazın. `agent-orchestrator config --cwd /absolute/path/to/project` bu örnekleri üretir; dosyalarınızı değiştirmez.
+
+### 4. İlk görevi verin
+
+Ana sohbetinize şunu yazın:
+
+> subagent_orchestrator ile önce yetenekleri ve çalışma dizinini kontrol et. Codex ile bir mimari inceleme, Claude ile bir test kapsamı incelemesi başlat. Dosyaları değiştirmesinler. Sonuçları bekle, başarısızlıkları açıkça belirt ve bulguları birleştir.
+
+**Her görev kendi başına anlaşılır bir brief almalıdır.** İlgili dosyaları, hedefi ve beklenen çıktıyı belirtin. Yalnızca kullandığınız sağlayıcının kurulu olması yeterlidir; iki sağlayıcılı bu örnek ikisini de gerektirir.
+
+## Bir görevin yaşam döngüsü
+
+Aşağıdakiler MCP araç çağrılarının giriş örnekleridir. `TASK_ID` ve `RUN_ID` yerlerine dönen gerçek UUID değerlerini kullanın.
+
+**Başlat** · `delegate_task`
 
 ```json
 {
-  "mcpServers": {
-    "subagent_orchestrator": {
-      "command": "agent-orchestrator",
-      "args": ["mcp", "--cwd", "/absolute/path/to/project"]
-    }
-  }
-}
-```
-
-Codex `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.subagent_orchestrator]
-command = "agent-orchestrator"
-args = ["mcp", "--cwd", "/absolute/path/to/project"]
-tool_timeout_sec = 75
-```
-
-Editörün PATH değişkeni komutu bulamıyorsa `command` alanına mutlak yolu yazın. `config` komutu örnekleri **yazdırır**; mevcut editör ayarlarınızı değiştirmez. MCP sunucusunu editörde etkinleştirip araç listesini yenileyin.
-
-### Ana oturum kimliği
-
-Varsayılan olarak her MCP süreci farklı bir ana oturum kimliği alır. Yeniden bağlanınca önceki görevlerinizi görmek için aynı `--parent BENZERSIZ_OTURUM_KIMLIGI` değerini kullanın. Kimliği `orchestrator_capabilities` çıktısındaki `scope.id` alanından da alabilirsiniz.
-
-Aynı kimliği bağımsız sohbetlere ortak vermeyin; aksi halde aynı görev listesini paylaşırlar. Proje yolu ve yetki tavanı bu kimliğe ilk kullanımda bağlanır. Bunları değiştiriyorsanız yeni kimlik kullanın. Standart MCP, editörün sohbet kimliğini veya çalışma izinlerini güvenilir biçimde otomatik sağlamaz.
-
-## Kullanım
-
-Ana ajana şu yönergeyi verebilirsiniz:
-
-> Gerektiğinde subagent_orchestrator araçlarını kullan. Önce yetenekleri kontrol et. Her değiştiren çağrı için benzersiz clientRequestId üret; tekrar denerken aynı kimliği ve aynı içeriği kullan. Görevleri kendi başına anlaşılır biçimde yaz. Ana bağlam değişirse send_to_subagent ile aktar. Başka işten döndüğünde get_notifications oku. Sonuçları raporlamadan önce tamamlanma durumlarını doğrula.
-
-Görev oluşturma:
-
-```json
-{
-  "task": "Bu projenin kimlik doğrulama akışını incele. Dosyaları değiştirme. Üç somut risk ve ilgili dosya yollarını raporla.",
+  "task": "Kimlik doğrulama akışını incele. Dosyaları değiştirme. Üç somut risk ve ilgili dosya yollarını raporla.",
   "provider": "codex",
+  "role": "review",
   "mode": "async",
   "clientRequestId": "auth-review-1"
 }
 ```
 
-`model` alanı sağlayıcının kabul ettiği model kimliğidir; otomatik model değişimi yapılmaz. Ana sohbetten açılan görevde alan boşsa sağlayıcının yerel varsayılanı geçerlidir; iç içe delegasyonda aynı sağlayıcının üst modeli devralınır. Codex'in canlı kataloğunu `agent-orchestrator models` ile okuyabilirsiniz. Bir modelin katalogda bulunması hesabınızın her isteğini kabul edeceği garantisi değildir. `doctor` yalnızca kurulum/sürüm kontrolüdür; gerçek giriş ve model erişimi görev çalıştırılırken doğrulanır.
+**Bekle** · `wait_for_task`
 
-`mode: "wait"` en fazla 60 saniye bekler. Süre dolması görevi iptal etmez. `wait_for_task` ile yeniden bekleyin. Belirli sonucu takip etmek için `runId` kullanın. Takip mesajı kabul edilirken `commandId` döner; yeni tur kuyruğu işlendiğinde oluşur. Yeni turun `runId` değerini durumdan okuyup onu bekleyin. Önceki tur bitmişse onun sonucunu yeni turun sonucu sanmayın.
+```json
+{ "taskId": "TASK_ID", "runId": "RUN_ID", "timeoutMs": 45000 }
+```
 
-`send_to_subagent` seçenekleri:
+Bekleme süresinin dolması iptal değildir. `taskId` konuşmayı, `runId` belirli bir turu tanımlar. Sonraki mesajın yeni turunu önceki tamamlanmış sonuçla karıştırmayın.
 
-- `auto`: Codex aktifken yönlendirme; Claude aktifken kuyruk; boşta aynı oturumda yeni tur.
-- `steer`: Codex'in aktif turuna yerel protokolüyle talimat ekler. Claude bu seçeneği açıkça reddeder.
-- `queue`: Aktif turdan sonra yeni tur başlatır. Sıra kalıcıdır.
-- `interrupt_and_restart`: Aktif turu keser, aynı yerel oturumun geçmişiyle yeni tur açar. Baştan farklı bir konuşma oluşturmaz.
+**Bağlamı güncelle** · `send_to_subagent`
 
-`get_subagent_messages` ve `get_notifications` çıktısındaki `nextOffset` değerini sonraki çağrıda `sinceOffset` olarak gönderin. Bildirimler okununca silinmez; her tüketici kendi imlecini tutar. `list_tasks` sayfalarında `nextCursor` değerini `before` olarak kullanın. Son sayfadan sonra boş liste gelir.
+```json
+{
+  "taskId": "TASK_ID",
+  "message": "Yeni bilgi: eski giriş akışı kaldırılıyor. İncelemeyi yeni akışla sınırla.",
+  "mode": "queue",
+  "clientRequestId": "auth-review-update-1"
+}
+```
 
-## İzinler ve çalışma dizinleri
+| Mesaj modu | Codex | Claude Code |
+| :--- | :--- | :--- |
+| `auto` | Aktif turu yönlendirir; boşta yeni tur | Aktifken kuyruğa alır; boşta yeni tur |
+| `steer` | Aktif tura talimat ekler | Desteklenmez; açık hata döner |
+| `queue` | Aktif turdan sonra yeni tur | Aktif turdan sonra yeni tur |
+| `interrupt_and_restart` | Turu keser, aynı oturumda devam eder | Turu keser, aynı oturumda devam eder |
 
-Varsayılan tavan `read-only` olur. Ana süreç, izinlerini MCP'ye standart biçimde bildirmediği için sistem daha geniş izin tahmin etmez. Yazma için kurulum argümanına açıkça `--ceiling auto-accept-edits` ekleyin; bu ayarı ana oturumun gerçek izinlerinden daha geniş yapmayın. Bir görev veya alt görev tavanını yükseltemez. `--plan`, çocukları salt okunur çalışmayla sınırlar.
+Aynı isteği ağ hatası sonrası tekrarlarken aynı `clientRequestId` ve içeriği kullanın. Yeni iş için yeni kimlik üretin. Sistem belirsiz sağlayıcı yan etkilerini otomatik tekrar etmez.
 
-- **read-only:** Codex yerel salt okunur sandbox kullanır; Claude yalnızca okuma, arama ve soru araçlarını alır.
-- **approval-required:** Bu sürümde temkinli biçimde salt okunura indirilir. Onay vererek yetki yükseltme arayüzü yoktur.
-- **auto-accept-edits:** Codex çalışma dizinine yazabilen sandbox kullanır; ağ kapalıdır. Claude proje içindeki Write/Edit işlemlerini yapabilir; kabuk çalıştıramaz. Dışarıdaki dosyalara yönelen yollar denetlenir.
-- **full-access:** Açık kurulum tercihi gerektirir. Codex sandbox kısıtını kaldırır; Claude kabuk ve yazma araçlarını alır. İşletim sistemi düzeyinde düşman kod izolasyonu sağlamaz.
+## MCP araçları
 
-`isolation: "worktree"`, görev oluşturulurken yakalanan Git commit'inden ayrı, detached bir checkout açar. Kaydedilmemiş değişiklikler ve bağımlılık dizinleri kopyalanmaz; kurulum betikleri otomatik çalıştırılmaz. Git deposu ve en az bir commit gerekir. Sonuçtaki `cwd` dizini korunur; değişiklikleri inceleyip taşıdıktan sonra `git worktree remove <yol>` ile kaldırabilirsiniz. Sistem değişiklikleri otomatik birleştirmez veya silmez.
+| Araç | Amaç |
+| :--- | :--- |
+| `orchestrator_capabilities` | Çalışma dizini, izin tavanı ve sağlayıcı yetenekleri |
+| `delegate_task` | Alt ajan oluşturma; asenkron veya beklemeli çalışma |
+| `send_to_subagent` | Aynı oturuma bağlam ve devam mesajı gönderme |
+| `wait_for_task` | Belirli turu, tamamlanmayı veya yapılandırılmış soruyu bekleme |
+| `get_task_status` | Durum, tur sonuçları, alt görevler ve teslim sorunları |
+| `get_subagent_messages` | İmleçle konuşma ve araç olaylarını okuma |
+| `get_notifications` | Tamamlanma, hata ve soru bildirimlerini okuma |
+| `list_tasks` | Geçerli ana oturumun görevlerini listeleme |
+| `answer_subagent` | Bekleyen yapılandırılmış soruya yanıt verme |
+| `cancel_task` | Görevi ve alt ağacını iptal etme |
 
-Aynı çalışma dizinindeki yazabilen görevler birbirleriyle eşzamanlı çalıştırılmaz. Dışarıdan editörünüzün yaptığı değişiklikleri servis kilitlemez. Bağımsız uygulama görevleri için ayrı worktree tercih edin.
+Olay ve bildirim okumalarında `nextOffset` değerini sonraki çağrının `sinceOffset` alanına taşıyın. Bildirimler okununca silinmez.
 
-### İş ajanının kendi alt ajanları
+## Kontrol sizde
 
-İki katmanlı çalışma desteklenir: **ana sohbet → üç iş ajanı → her işin test/uygulama ajanları**. Her çocuk oturuma, yalnızca kendi alt ağacını yönetebilen MCP bağlantısı otomatik verilir. İş ajanı aynı `delegate_task`, `send_to_subagent` ve `wait_for_task` araçlarını kullanır. `parentTaskId` elle vermesi gerekmez; servis bağlar.
+### Modeller ve CLI sürümleri
 
-Sağlayıcı ve model belirtilmezse çocuk, çağıran ajanın sağlayıcısını ve modelini alır. Başka sağlayıcı seçilirse o sağlayıcının modeli ayrıca verilebilir; mevcut sağlayıcının model kimliği diğerine taşınmaz. İzinler ve plan modu da üst görevden alınır ve genişletilemez. İş ajanı kardeş işlerin görevlerini okuyamaz veya iptal edemez. Ana sohbet kendi ağacının tamamını görev kimliğiyle inceleyebilir; `children` alanı doğrudan alt görevleri listeler.
+`model` alanına sağlayıcının kabul ettiği kimliği verin. Sistem desteklenmeyen bir modeli sessizce başka bir modelle değiştirmez. Alan boşsa kök görev sağlayıcının varsayılanını kullanır; aynı sağlayıcıdaki çocuk üst modelini devralır.
 
-Sonuç ve bildirimler çağıran iş ajanına döner. İş ajanı bunları birleştirip ana sohbete raporlar. Ana sohbetin kapanması veya üst ajanın turunu bitirmesi çocukları otomatik öldürmez; açık iptal alt ağaca yayılır.
+```sh
+agent-orchestrator models     # Çalışan servisin Codex model kataloğu
+agent-orchestrator doctor     # Kabuktaki CLI kurulumları ve sürümleri
+```
 
-Ana sohbet derinliğe dahil değildir. Varsayılan en fazla üç ajan katmanı ve **katman başına dört** çalışan süreç vardır; toplam üst sınır on ikidir. Üst ajan çocuk sonucunu beklerken `waiting_children` olur. Ayrı katman kotaları sayesinde bekleyen üst ajanlar alt ajanların tüm yuvalarını tüketmez. Aynı dizindeki yazma sırası da bu bekleme sırasında bırakılır. Yazan bir üst ajan çalışırken aynı dizine yazacak asenkron çocuk sırada bekler; üst ajan `wait_for_task` çağırmalı veya çocuk için ayrı worktree seçmelidir. Salt okunur çocuklar eşzamanlı çalışabilir. Bekleme zaman aşımından sonra üst ajan çalışmaya devam edebilir; eşzamanlı dosya değişiklikleri için ayrı worktree kullanın.
+Birden fazla CLI kurulumu varsa `ORCHESTRATOR_CODEX_BIN` veya `ORCHESTRATOR_CLAUDE_BIN` ile mutlak yol seçebilirsiniz. Model kataloğu, ana uygulamanızın kataloğuyla aynı olmayabilir. [CLI yolu sorun giderme →](docs/usage.md#yanlış-cli-sürümü-veya-model-görünmüyor)
 
-Servis başlamadan önce `ORCHESTRATOR_MAX_DEPTH` (1–8) ve `ORCHESTRATOR_CONCURRENCY_PER_DEPTH` (1–16) ile sınırları değiştirebilirsiniz. İlk bağlantının başlattığı servis bu ayarları alır; değişiklik için kendi servisinizi durdurup yeniden başlatın. Derinlik sınırındaki ajana delegasyon bağlantısı verilmez; servis de ayrıca sınırı denetler. Sağlayıcıların izlenmeyen native ajan araçları kapalı kalır.
+### İzinler ve worktree
 
-## Kesinti ve devam etme
+| İzin tavanı | Davranış |
+| :--- | :--- |
+| `read-only` | Varsayılan. Codex salt okunur sandbox; Claude okuma/arama/soru araçları. |
+| `approval-required` | Bu sürümde salt okunur davranır; etkileşimli yetki yükseltme yok. |
+| `auto-accept-edits` | Codex çalışma dizinine yazabilir, ağ kapalıdır. Claude proje içi Write/Edit kullanır, kabuk kullanamaz. |
+| `full-access` | Açık tercih gerekir. Codex sandbox kısıtı kalkar; Claude kabuk ve yazma araçlarını alır. |
 
-MCP köprüsünün kapanması servisi durdurmaz. Servis kapanırsa kayıtlar SQLite'ta kalır. Aktif turun bitip bitmediği kesin bilinmiyorsa durum `recovery_required` olur. Aynı işi otomatik tekrar yürütmez. Önce olayları ve dosyaları inceleyin; ardından açık bir `send_to_subagent` devam mesajı gönderin. Çökme öncesindeki kuyruk mesajları `held`, teslimi belirsiz komutlar `uncertain` olarak `deliveryIssues` içinde görünür. Bunları körlemesine tekrar göndermeyin.
+Yazma izni için MCP argümanlarına `--ceiling auto-accept-edits` ekleyin. Tavanı ana oturumun gerçek izinlerinden geniş tutmayın. Çocuklar bu tavanı yükseltemez; `--plan` salt okunur çalışmayı zorlar.
 
-Sağlayıcı süreçleri turlar arasında kapatılır; sonraki turda kalıcı yerel oturum kimliğiyle açılır. Codex aktif tur yönlendirmesi süreç yeniden başlatmadan yapılır. Servis çökmesinden önce yerel oturum kimliğinin kaydı alınamamışsa otomatik bağlanma mümkün değildir.
+Bağımsız uygulama görevlerinde `isolation: "worktree"` seçin. Ayrı checkout, görev kabulündeki commit'ten oluşturulur. Kaydedilmemiş değişiklikler kopyalanmaz; bağımlılıklar otomatik kurulmaz. Worktree'ler incelemeniz için korunur; otomatik merge veya silme yapılmaz.
 
-Sonuçlar **tur başına değişmez**. Görevin son durumu değişebilir; önceki sonuç `runs` içinde korunur. İptal edilmiş göreve devam edilemez; yeni görev açın.
+### Kota ve kesinti
+
+- **Kota dolduğunda:** Görev `failed` olur. Üst ajana `usage_limit` veya `rate_limit`, sağlayıcı ve varsa `resetHint` gider. Sıradaki mesajlar bekletilir; otomatik tekrar yapılmaz.
+- **Servis çöktüğünde:** Belirsiz aktif işler `recovery_required` olur. Önce kayıtları ve dosyaları inceleyin; sonra açık devam mesajı gönderin.
+- **Köprü kapandığında:** Servis ve görevler çalışmayı sürdürür. Sohbeti kapatmayı iptal olarak kabul etmeyin.
 
 ```sh
 agent-orchestrator status
-agent-orchestrator stop
+agent-orchestrator stop       # Bu veri alanındaki bütün aktif sağlayıcı süreçlerini durdurur
 ```
 
-`stop` bu veri alanındaki tüm aktif çocuk süreçleri durdurur. Tek görev için `cancel_task` kullanın. Servis açılışta otomatik başlar; bilgisayar yeniden açıldığında ilk MCP bağlantısına kadar çalışmaz. Sürekli işletim gerekiyorsa `daemon` komutunu kendi launchd/systemd yöneticinize bağlayabilirsiniz.
+Tek görevi durdurmak için `cancel_task` kullanın. Görev geçmişi varsayılan olarak `~/.local/share/agent-orchestrator/` altında kalır.
 
-## Bilinen sınırlar
+<details>
+<summary><strong>Oturuma yeniden bağlanma ve kapasite ayarları</strong></summary>
 
-- Ana sohbet otomatik okunmaz. Bağlam değişikliklerini ana ajan araç çağrısıyla iletir.
-- Standart MCP tüm istemcilerde otomatik sohbet uyandırmayı garanti etmez. Bildirim kuyruğu ve bekleme araçları güvenilir yoldur.
-- Sorular yalnızca sağlayıcının yapılandırılmış soru aracıyla gelirse beklemeyi keser; düz metindeki soru işaretleri otomatik yorumlanmaz.
-- Yetki alanı yerel OS kullanıcısıdır. Aynı kullanıcı altında çalışan kötü niyetli süreçlerden veya düşman koddan koruyan çok kiracılı bir sistem değildir. SQLite/yerel soket paylaşım sunucusu olarak internete açılmaz.
-- Varsayılan katman başına dört aktif görev, bin açık görev ve görev başına yüz kuyruk mesajı. Bir tur en fazla otuz dakika çalışır. Model bütçesi/ücret üst sınırı bu sürümde yoktur.
-- Mesajlar 64.000 karakterle, saklanan sonuç 128.000 karakterle sınırlıdır. Büyük olaylar kesilme işareti taşır. Native sağlayıcı kayıtları ayrıca kendi dizinlerinde kalır.
-- Veriler yerel dosya izinleriyle korunur; şifrelenmez ve otomatik silinmez. Worktree, konuşma ve sonuç kayıtlarının yaşam döngüsünü kullanıcı yönetir.
-- macOS'ta gerçek sağlayıcılarla doğrulandı. Linux için CI tanımlıdır; bu teslimde Linux ve WSL üzerinde gerçek model testi yapılmadı.
+Her MCP köprüsü varsayılan olarak farklı ana oturum kimliği üretir. Önceki işlerinize yeniden bağlanmak için `orchestrator_capabilities` çıktısındaki `scope.id` değerini `--parent` argümanı olarak saklayın. Aynı kimliği bağımsız sohbetlere ortak vermeyin.
 
-## Geliştirme ve doğrulama
+Servis başlamadan önce `ORCHESTRATOR_MAX_DEPTH` (1–8, varsayılan 3) ve `ORCHESTRATOR_CONCURRENCY_PER_DEPTH` (1–16, varsayılan 4) ayarlanabilir. İlk köprünün başlattığı servis ortamı korur; değişiklik için aktif işleri güvenli biçimde bitirip servisi yeniden başlatın.
+
+Aynı çalışma dizinindeki yazabilen görevler sırayla çalışır. Yazan üst ajan aynı dizindeki yazan çocuğunu beklemeli veya ayrı worktree kullanmalıdır. Üst ajanların beklemesi diğer derinliklerin işlem yuvalarını tüketmez.
+
+</details>
+
+## Sınırlar ve güvenlik
+
+> [!NOTE]
+> Bu sürüm geliştirici aracıdır; görsel görev paneli henüz yoktur. Görevleri MCP araçlarıyla inceleyebilirsiniz.
+
+- Yerel işletim sistemi kullanıcısı güven sınırıdır; çok kiracılı servis veya düşman kod sandbox'ı değildir.
+- Konuşma ve görev verileri diskte tutulur; şifreleme ve otomatik silme yoktur.
+- Çocuklar ana konuşmayı veya ana ajanın diğer MCP bağlantılarını otomatik devralmaz.
+- Sağlayıcı hesap kotaları ve ücretleri geçerlidir. Model harcama üst sınırı uygulanmaz.
+- Bir tur en fazla 30 dakika; en fazla 1.000 açık görev ve görev başına 100 kuyruk mesajı.
+- Girdi 64.000, saklanan sonuç 128.000 karakterle sınırlıdır.
+- Gerçek sağlayıcı testleri macOS'ta yapıldı. Linux/WSL üzerinde gerçek model testi iddia edilmiyor; CI durumu yukarıdaki rozette görünür.
+
+Ayrıntılar: [güvenlik politikası](SECURITY.md) · [izinler ve veri yaşam döngüsü](docs/usage.md#bilinen-sınırlar).
+
+## Geliştirme
 
 ```sh
+npm ci
+npm run format:check
 npm run check
 npm test
+npm run build
+```
+
+**34 otomatik test:** görev yaşam döngüsü, iç içe delegasyon, izinler, kota bildirimleri, süreç çökmesi, kalıcı kayıtlar, MCP bağlantısı ve worktree davranışı. Normal testler model hesabı veya API anahtarı istemez.
+
+<details>
+<summary><strong>Gerçek sağlayıcı testleri</strong></summary>
+
+```sh
 npm run test:live
 npm run test:live:controls
 npm run test:live:nesting
-npm pack --dry-run
 ```
 
-Normal testler gerçek model çağırmaz. `test:live*` yerel sağlayıcı hesabınızı kullanır ve kısa gerçek model çağrıları yapar. Testler geçici çalışma dizinleri oluşturup kendi süreçlerini durdurur. Ayrıntılar: [mimari ve şartname incelemesi](docs/architecture.md), [test kanıtları](docs/verification.md).
+Bu komutlar mevcut sağlayıcı girişlerinizi kullanır ve kota tüketebilir. Geçici çalışma dizinlerinde çalışırlar. Önceki başarılı senaryolar, kota nedeniyle tamamlanamayan tekrarlar ve doğrulanan sürümler [doğrulama kaydında](docs/verification.md) ayrı belirtilir.
 
-### Kota ve hız sınırı bildirimleri
+</details>
 
-Sağlayıcı kota hatasıyla durduğunda görev `failed` olur. `wait_for_task`,
-`get_task_status` ve üst ajanın `get_notifications` çıktısı `failure` alanını
-sunar: `kind` (`usage_limit` veya `rate_limit`), `provider`, varsa `resetHint`,
-`automaticRetry: false` ve sonraki adım. `resetHint` sağlayıcının özgün ifadesidir;
-tarihi belirsiz saatleri kesin zaman damgasına çevirmeyiz. Ham hata da korunur.
+## Belgeler
 
-O görev için önceden sıraya alınmış mesajlar `held` durumuna alınır; otomatik
-tekrar yapılmaz. Limit kalkınca `send_to_subagent` ile yeni, açık bir devam
-mesajı gönderin; bekletilen eski mesajlar kendiliğinden çalışmaz. Önceki turun
-hata kaydı değişmez. İç içe görevlerde bildirim doğrudan çağıran üst ajana gider.
-Üst ajan durumu kullanıcıya raporlamalıdır. MCP bütün istemcilerde sohbeti
-kendiliğinden uyandıramaz: üst ajan bildirimleri okumalı veya sonucu beklemelidir.
+| Rehber | İçerik |
+| :--- | :--- |
+| [Ayrıntılı kullanım](docs/usage.md) | Kurulum, oturum kimliği, mesaj semantiği, izinler ve sorun giderme |
+| [Mimari kararlar](docs/architecture.md) | Katmanlar, veri güvenilirliği ve tasarım tercihleri |
+| [Doğrulama kaydı](docs/verification.md) | Otomatik ve gerçek sağlayıcı testlerinin kanıtları ve sınırları |
+| [Sürüm notları](CHANGELOG.md) | Sürümler arasındaki değişiklikler |
+| [Katkı rehberi](CONTRIBUTING.md) | Yerel geliştirme ve pull request hazırlama |
+| [Güvenlik](SECURITY.md) | Güven sınırları ve özel açık bildirimi |
 
-### Yanlış CLI sürümü veya model görünmüyor
+## Yol haritası
 
-Birden fazla CLI kurulumu varsa `which -a codex` / `which -a claude` ile yolları,
-her yol için `--version` ile sürümleri karşılaştırın. MCP sunucusunun ortamına
-`ORCHESTRATOR_CODEX_BIN` ve/veya `ORCHESTRATOR_CLAUDE_BIN` değişkenini ekleyerek
-kullanılacak çalıştırılabilir dosyanın mutlak yolunu belirtin. Örneğin Codex ayarı:
+Gelecekte görev ağacını, konuşmaları ve olayları incelemek için görsel bir arayüz hedefleniyor. Mevcut servis ve kayıt yapısı buna temel olacak. Bu bir teslim tarihi veya mevcut özellik vaadi değildir.
 
-```toml
-[mcp_servers.subagent_orchestrator.env]
-ORCHESTRATOR_CODEX_BIN = "/absolute/path/to/codex"
-ORCHESTRATOR_CLAUDE_BIN = "/absolute/path/to/claude"
-```
+## Katkı ve kaynaklar
 
-Claude Code ve VS Code JSON ayarlarında aynı değişkenleri sunucunun `env`
-nesnesine ekleyin. Servis başlangıç ortamını korur: aktif işleri bitirin,
-`agent-orchestrator stop` çalıştırın ve MCP bağlantısını yeni ortamla yenileyin.
-`stop` çalışan sağlayıcı süreçlerini de durdurur. `doctor` kabuğun PATH'ini,
-`models` ise çalışan servisin Codex kataloğunu kontrol eder.
+Hata raporları ve somut iyileştirme önerileri için [issue açın](https://github.com/muratangin187/subagent-orchestrator/issues). Kod katkısı için [katkı rehberini](CONTRIBUTING.md) izleyin. Güvenlik açıklarını public issue yerine [özel olarak bildirin](https://github.com/muratangin187/subagent-orchestrator/security/advisories/new).
+
+Tasarım sırasında [T3 Code](https://github.com/pingdotgg/t3code) orkestrasyon yaklaşımı incelendi. İncelenen sürüm ve kaynaklar [mimari belgesinde](docs/architecture.md) listelenir. T3 çalışma zamanı kodu veya paket bağımlılığı bu projeye taşınmadı.
+
+---
+
+<div align="center">
+
+**[MIT lisansı](LICENSE)** · Yerel orkestrasyon, açık kaynak.
+
+</div>
