@@ -1,4 +1,5 @@
 export type Task = {
+  runId?: string;
   deviceId?: string;
   id: string;
   title?: string;
@@ -23,7 +24,7 @@ export type Task = {
 export type Snapshot = {
   localDeviceId?: string;
   defaultDeviceId?: string;
-  devices?: {id:string;name:string;cwd:string;online?:boolean}[];
+  devices?: { id: string; name: string; cwd: string; online?: boolean }[];
   assistantId?: string;
   tasks: Task[];
   inputs: {

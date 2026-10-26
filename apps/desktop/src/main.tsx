@@ -1,9 +1,11 @@
+import { chatStatus } from "./chat-status.mjs";
 import { AttachmentPreview } from "./AttachmentPreview";
 import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
+  Loader2,
   Sparkles,
   MessageSquare,
   Layers,
@@ -68,6 +70,9 @@ function App() {
     [modal, setModal] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
+    [deliveries, setDeliveries] = useState<
+      Record<string, { phase: string; previousRunId?: string }>
+    >({}),
     [messages, setMessages] = useState<Message[]>([]),
     [events, setEvents] = useState<Event[]>([]),
     [older, setOlder] = useState<number | null>(null),
@@ -126,9 +131,16 @@ function App() {
     snap.tasks.filter((t) => t.id !== snap.assistantId && isActive(t)),
   );
   const children = ordered(
-    snap.tasks.filter((t) => t.parentTaskId === selected),
+    snap.tasks.filter((t) => t.parentTaskId === task?.id),
   );
   const draft = drafts[selected] || "";
+  const progress = chatStatus({
+    task,
+    delivery: deliveries[selected],
+    offline,
+    connected,
+    activeChildren: children.filter(isActive).length,
+  });
   const fail = (e: unknown) =>
     setError(
       String(e instanceof Error ? e.message : e).replace(
@@ -330,7 +342,25 @@ function App() {
         confirmExternal: true,
       });
     }
-    await request(p, body);
+    const previousRunId = task?.runId;
+    setDeliveries((d) => ({
+      ...d,
+      [pick]: { phase: "sending", previousRunId },
+    }));
+    try {
+      await request(p, body);
+      setDeliveries((d) => ({
+        ...d,
+        [pick]: { phase: "accepted", previousRunId },
+      }));
+    } catch (e) {
+      setDeliveries((d) => ({
+        ...d,
+        [pick]: { phase: "uncertain", previousRunId },
+      }));
+      throw e;
+    }
+    nearBottom.current = true;
     setDrafts((d) => ({ ...d, [pick]: "" }));
     setFiles([]);
     if (external) {
@@ -1205,6 +1235,32 @@ function App() {
                 </form>
               )}
               <div className="composer-wrap">
+                {!external && (
+                  <div
+                    className={"chat-progress " + progress.kind}
+                    role="status"
+                    aria-live="polite"
+                    data-testid="chat-progress"
+                  >
+                    {progress.animated ? (
+                      <Loader2 size={18} className="progress-spinner" />
+                    ) : progress.kind === "warning" ? (
+                      <AlertCircle size={18} />
+                    ) : (
+                      <CheckCircle2 size={18} />
+                    )}
+                    <div>
+                      <strong>{progress.label}</strong>
+                      <small>{progress.detail}</small>
+                    </div>
+                    {task?.deviceId && (
+                      <span className="progress-device">
+                        {snap.devices?.find((d) => d.id === task.deviceId)
+                          ?.name || task.deviceId}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {external && (
                   <label className="external-confirm">
                     <input
@@ -1304,7 +1360,11 @@ function App() {
                       }
                       aria-label="Gönder"
                     >
-                      <ArrowUp size={20} />
+                      {deliveries[selected]?.phase === "sending" ? (
+                        <Loader2 size={20} className="progress-spinner" />
+                      ) : (
+                        <ArrowUp size={20} />
+                      )}
                     </button>
                   </div>
                 </form>
