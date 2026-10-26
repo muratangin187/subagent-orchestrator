@@ -168,3 +168,11 @@ sends the draft automatically. Review/edit the text, then send it yourself. On
 Android, a pause ends the recording; on desktop, use **Dikteyi bitir**. Leaving
 the app cancels recording. **Sesli asistan** remains the separate conversational
 voice flow. Both use the existing server-side ElevenLabs connection.
+
+### Hesap limitleri ve görev ağacı
+
+Masaüstünde Ayarlar'ın üstündeki Codex/Claude çubukları, mobilde sohbet başlığındaki halka **kullanılan** limit yüzdesini gösterir. Birden fazla pencere varsa özet en dolu pencereyi seçer. Üzerine basınca kısa dönem, haftalık ve sağlayıcının sunduğu model pencereleri ile yenilenme zamanları açılır. Değerler seçili oturumun çalıştığı cihazdaki hesaptan, yaklaşık dakikada bir okunur. Bilinmeyen değer sıfır olarak gösterilmez; güncelleme hatası ve son kontrol zamanı ayrıntıda belirtilir.
+
+İşler ekranı alt görevlerin alt görevlerini de içerir. Girinti ve üst görev yolu ilişkiyi gösterir. Mobilde aktif iş filtresi, aktif bir alt görevin üst görevlerini de bağlam için tutar. Masaüstü bağımsız oturumları ayrıca işaretler.
+
+Limit okuması bir model turu başlatmaz. Codex app-server hesap limitleri ve Claude SDK'nin deneysel kullanım sorgusu kullanılır; CLI sürümü veya hesap türü bu sorguyu desteklemiyorsa sohbet çalışmaya devam eder, limit bilgisi kullanılamaz olarak görünür.

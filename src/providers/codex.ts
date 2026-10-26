@@ -271,6 +271,12 @@ export class CodexDriver implements Driver {
     await this.rpc?.close();
   }
   static async models() {
+    return this.inspect("model/list", { includeHidden: true });
+  }
+  static async usageLimits() {
+    return this.inspect("account/rateLimits/read", null);
+  }
+  private static async inspect(method: string, params: unknown) {
     const rpc = new RpcProcess(
       process.env.ORCHESTRATOR_CODEX_BIN ?? "codex",
       args(),
@@ -280,7 +286,7 @@ export class CodexDriver implements Driver {
         clientInfo: { name: "standalone_orchestrator", version: "0.1.0" },
       });
       rpc.send({ method: "initialized", params: {} });
-      return await rpc.request("model/list", { includeHidden: true });
+      return await rpc.request(method, params, 12000);
     } finally {
       await rpc.close();
     }

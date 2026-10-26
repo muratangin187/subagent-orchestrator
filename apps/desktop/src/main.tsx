@@ -1,3 +1,5 @@
+import { UsageLimits } from "./UsageLimits";
+import { taskTree } from "./task-tree.mjs";
 import { ModelPicker, type Selection } from "./ModelPicker";
 import {
   transferredFiles,
@@ -1010,6 +1012,12 @@ function App() {
           )}
         </div>
         <div className="side-bottom">
+          <UsageLimits
+            deviceId={
+              task?.deviceId || external?.deviceId || snap.localDeviceId
+            }
+            connected={connected && !offline}
+          />
           <button onClick={() => setModal("settings")}>
             <Settings size={17} />
             Ayarlar<kbd>⌘ ,</kbd>
@@ -1111,69 +1119,33 @@ function App() {
                 <small>aktif iş</small>
               </span>
             </div>
-            <div className="board">
-              {[
-                [
-                  "Devam ediyor",
-                  snap.tasks.filter(
-                    (t) =>
-                      t.id !== snap.assistantId &&
-                      isActive(t) &&
-                      !["waiting_question", "recovery_required"].includes(
-                        t.status,
-                      ),
-                  ),
-                ],
-                [
-                  "Seni bekliyor",
-                  snap.tasks.filter((t) =>
-                    ["waiting_question", "recovery_required"].includes(
-                      t.status,
-                    ),
-                  ),
-                ],
-                [
-                  "Son sonuçlananlar",
-                  ordered(
-                    snap.tasks.filter(
-                      (t) => !isActive(t) && t.id !== snap.assistantId,
-                    ),
-                  ).slice(0, 15),
-                ],
-              ].map(([label, ts]: any) => (
-                <section className="lane" key={label}>
-                  <h3>
-                    {label}
-                    <span>{ts.length}</span>
-                  </h3>
-                  {ordered(ts).map((t) => (
-                    <button
-                      className="job-card"
-                      key={t.id}
-                      onClick={() => choose(t.id)}
-                    >
-                      <div>
-                        <span className="provider">{t.provider}</span>
-                        <span className="quiet">{date(t.updatedAt)}</span>
-                      </div>
-                      <h3>{title(t)}</h3>
+            <div className="task-tree">
+              {taskTree(snap.tasks, snap.assistantId).map(
+                ({ task: t, depth, path, childCount }: any) => (
+                  <button
+                    className={"job-card tree-job " + (depth ? "nested" : "")}
+                    style={{ marginLeft: Math.min(depth, 6) * 24 }}
+                    key={t.id}
+                    onClick={() => choose(t.id)}
+                  >
+                    <small className="tree-path" title={path.join(" → ")}>
+                      {path.join(" → ")}
+                    </small>
+                    <h3>{title(t)}</h3>
+                    <div>
                       <Badge task={t} />
-                      {t.parentTaskId && (
-                        <small className="parent">
-                          <Layers size={12} />
-                          Alt görev
-                        </small>
-                      )}
-                    </button>
-                  ))}
-                  {!ts.length && (
-                    <div className="lane-empty">
-                      <CheckCircle2 size={22} />
-                      <span>Burada bekleyen iş yok.</span>
+                      <span className="quiet">
+                        {t.provider} · {t.deviceId || "yerel"}
+                        {childCount > 0 ? ` · ${childCount} alt görev` : ""}
+                      </span>
+                      <span className="quiet">{date(t.updatedAt)}</span>
                     </div>
-                  )}
-                </section>
-              ))}
+                  </button>
+                ),
+              )}
+              {!snap.tasks.some((t) => t.id !== snap.assistantId) && (
+                <p>Henüz iş yok.</p>
+              )}
             </div>
           </div>
         ) : view === "sessions" ? (

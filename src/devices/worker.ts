@@ -1,3 +1,4 @@
+import { usageLimits } from "../providers/limits.js";
 import { modelCatalog } from "../providers/catalog.js";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
@@ -44,6 +45,7 @@ export async function worker() {
         let result: any;
         if (q.op === "health")
           result = { online: true, platform: process.platform };
+        else if (q.op === "limits") result = await usageLimits();
         else if (q.op === "models") result = await modelCatalog();
         else if (q.op === "native")
           result = await nativeList(

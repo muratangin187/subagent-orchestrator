@@ -291,11 +291,13 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             )
                         }
                     items(
-                        sortedJobs.filter { !activeJobsOnly || isActiveJob(it) },
-                        key = { it.getString("id") },
-                    ) { t ->
+                        jobTree(jobs, s.snapshot.optString("assistantId"), activeJobsOnly),
+                        key = { it.task.getString("id") },
+                    ) { row ->
+                        val t = row.task
                         Card(onClick = { openTask(t) }, colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
-                            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                            Column(Modifier.fillMaxWidth().padding(start = (16 + row.depth.coerceAtMost(5) * 14).dp, end = 16.dp, top = 12.dp, bottom = 12.dp)) {
+                                Text(row.path.joinToString(" → "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                                 Text(
                                     t.optString("title"),
                                     fontWeight = FontWeight.SemiBold,
@@ -347,6 +349,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             }
                     },
                     actions = {
+                        UsageLimits(model, (current ?: model.nativeSelection)?.optString("deviceId")?.takeIf { it.isNotBlank() } ?: s.snapshot.optString("localDeviceId"), (current ?: model.nativeSelection)?.optString("provider") ?: "codex")
                         IconButton(
                             onClick = {
                                 settingsFromVoice = false
@@ -1135,7 +1138,7 @@ fun AttachmentCard(file: ChatAttachment, loading: Boolean, onClick: () -> Unit) 
     }
 }
 
-private fun isActiveJob(task: JSONObject) =
+fun isActiveJob(task: JSONObject) =
     task.optString("status") !in listOf("completed", "cancelled", "failed")
 
 @Composable

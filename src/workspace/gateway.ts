@@ -1,3 +1,4 @@
+import { usageLimits } from "../providers/limits.js";
 import { modelCatalog } from "../providers/catalog.js";
 import { selectionSchema } from "../schema.js";
 import { activityPatches } from "./activity.js";
@@ -49,6 +50,10 @@ export async function startGateway(
   port: number,
 ) {
   const voice = new VoiceService(controller, home);
+  const limitQueries = new Map<
+    string,
+    { until: number; result: Promise<unknown> }
+  >();
   let deviceCache: { at: number; value: unknown } | undefined;
   const resolveDevice = (id: string | null | undefined) =>
     controller.engine.devices?.get(
@@ -276,6 +281,27 @@ export async function startGateway(
             url.searchParams.get("deviceId") ?? undefined,
           ),
         );
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/v1/limits") {
+        const deviceId =
+          url.searchParams.get("deviceId") ||
+          controller.engine.devices?.config.localId;
+        const remote = deviceId && controller.engine.devices?.remote(deviceId);
+        const key = deviceId || "local";
+        let entry = limitQueries.get(key);
+        if (!entry || entry.until <= Date.now()) {
+          const result = remote
+            ? deviceQuery(controller.engine.devices!.get(deviceId!), {
+                op: "limits",
+              })
+            : usageLimits();
+          entry = { until: Date.now() + 60000, result };
+          limitQueries.set(key, entry);
+        }
+        const result =
+          (await entry.result) as import("../providers/limits.js").UsageLimits;
+        send(200, { ...result, deviceId });
         return;
       }
       if (req.method === "GET" && url.pathname === "/v1/models") {
