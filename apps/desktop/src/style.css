@@ -1491,11 +1491,11 @@ header button {
   border-top: 1px solid var(--line);
   padding-top: 12px;
 }
-.usage-limits summary {
+.usage-summary {
   cursor: pointer;
   list-style: none;
 }
-.usage-limits summary > small {
+.usage-summary > small {
   font-size: 9px;
   opacity: 0.65;
 }
@@ -1535,10 +1535,10 @@ header button {
   opacity: 0.35;
 }
 .usage-popover {
-  position: absolute;
-  bottom: 0;
-  left: calc(100% + 16px);
-  z-index: 80;
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  color: var(--fg);
   width: 310px;
   max-height: 70vh;
   overflow: auto;
@@ -1624,7 +1624,7 @@ main > header { padding-left: 88px; }
 .inspector { display: flex; flex-direction: column; }
 .inspector-bottom { margin-top: auto; padding-top: 24px; display: grid; gap: 12px; }
 .rail-action { display: flex; align-items: center; gap: 10px; padding: 10px 0; text-align: left; }
-.inspector .usage-popover { left: auto; right: 0; bottom: 100%; }
+
 .header-actions button { display: inline-flex; gap: 7px; align-items: center; }
 .composer-tools { display: flex; align-items: center; gap: 8px; }
 .composer-tools > .model-controls { flex: 0 1 auto; margin-right: auto; min-width: 0; }

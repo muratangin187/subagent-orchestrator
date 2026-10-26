@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useId } from "react";
 import { request } from "./types";
 type Window = {
   id: string;
@@ -19,6 +19,14 @@ export function UsageLimits({
   deviceId?: string;
   connected: boolean;
 }) {
+  const popover = useRef<HTMLDivElement>(null);
+  const popoverId = useId();
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    const close = () => popover.current?.hidePopover();
+    window.addEventListener("resize", close);
+    return () => window.removeEventListener("resize", close);
+  }, []);
   const [providers, setProviders] = useState<Limits[]>([]);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -51,8 +59,21 @@ export function UsageLimits({
     };
   }, [deviceId, connected]);
   return (
-    <details className="usage-limits">
-      <summary aria-label="Sağlayıcıların kalan kotası">
+    <div className="usage-limits">
+      <button type="button" className="usage-summary" aria-label="Sağlayıcıların kalan kotası"
+        aria-expanded={expanded} aria-controls={popoverId}
+        onClick={(event) => {
+          const panel = popover.current;
+          if (!panel) return;
+          if (panel.matches(":popover-open")) { panel.hidePopover(); return; }
+          const anchor = event.currentTarget.getBoundingClientRect();
+          const width = Math.min(350, window.innerWidth - 32);
+          panel.style.width = `${width}px`;
+          panel.style.left = `${Math.max(16, Math.min(anchor.right - width, window.innerWidth - width - 16))}px`;
+          panel.style.bottom = `${window.innerHeight - anchor.top + 10}px`;
+          panel.style.maxHeight = `${Math.max(120, anchor.top - 26)}px`;
+          panel.showPopover();
+        }}>
         <small>KALAN KOTA · {deviceId || "yerel"}</small>
         {["codex", "claude"].map((provider) => {
           const row = providers.find((p) => p.provider === provider);
@@ -78,8 +99,9 @@ export function UsageLimits({
             </div>
           );
         })}
-      </summary>
-      <div className="usage-popover">
+      </button>
+      <div className="usage-popover" id={popoverId} ref={popover} popover="auto"
+        onToggle={(event) => setExpanded(event.currentTarget.matches(":popover-open"))}>
         <h3>Kalan kota</h3>
         <p>En az kotası kalan dönem özetlenir. Yüzdeler kalan payı gösterir.</p>
         {!connected && <p>Bağlantı yok.</p>}
@@ -108,6 +130,6 @@ export function UsageLimits({
           </section>
         ))}
       </div>
-    </details>
+    </div>
   );
 }

@@ -191,3 +191,28 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 .model-menu > button { display: flex; text-align: left; width: 100%; padding: 10px; }
 .model-menu small { display: block; color: var(--muted); margin-top: 4px; }
 .model-menu button[aria-pressed="true"] { background: var(--accent-soft); }
+
+/* Compact controls and dialog rows share a deliberate alignment grid. */
+.usage-summary { display: block; width: 100%; padding: 0; text-align: left; background: transparent; }
+.model-controls > .model-picker > button { display: inline-flex; align-items: center; min-height: 34px; padding: 6px 10px; gap: 10px; }
+.model-controls > .model-picker > button span,
+.model-controls > .model-picker > button small { display: block; margin: 0; line-height: 20px; }
+.model-controls > .model-picker > button small { padding-left: 10px; border-left: 1px solid var(--line); font-size: 12px; }
+.model-controls > .model-picker > button svg { flex: none; }
+.modal.jobs-modal { width: 760px; padding: 28px; }
+.jobs-modal .page-title { align-items: flex-start; padding-right: 36px; margin-bottom: 20px; }
+.jobs-modal .page-title h1 { font-size: 24px; line-height: 32px; }
+.jobs-modal .page-title p { max-width: 440px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.jobs-modal .metric { font-size: 24px; line-height: 32px; letter-spacing: 0; margin: 0; flex-shrink: 0; }
+.jobs-modal .task-tree { gap: 0; }
+.jobs-modal .tree-job { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; padding: 16px 12px; align-items: start; min-width: 0; }
+.jobs-modal .tree-path { grid-column: 1 / -1; font-size: 11px; line-height: 16px; }
+.jobs-modal .tree-job h3 { grid-column: 1; margin: 0; font-size: 14px; line-height: 21px; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.jobs-modal .tree-job > div { grid-column: 2; display: flex; align-items: flex-end; flex-direction: column; gap: 5px; }
+.jobs-modal .tree-job .quiet { font-size: 11px; line-height: 16px; }
+.jobs-modal .tree-job .badge { white-space: nowrap; }
+@media (max-width: 700px) {
+  .modal.jobs-modal { padding: 20px; }
+  .jobs-modal .tree-job { grid-template-columns: minmax(0, 1fr); }
+  .jobs-modal .tree-job > div { grid-column: 1; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
+}

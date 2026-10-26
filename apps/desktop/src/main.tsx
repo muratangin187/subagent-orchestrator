@@ -1637,7 +1637,7 @@ function App() {
                         : "Çalışma alanı işlemi"
             }
             className={
-              "modal " +
+              "modal " + (modal === "jobs" ? "jobs-modal " : "") +
               (modal === "voice"
                 ? "voice-modal"
                 : preview
@@ -1696,7 +1696,7 @@ function App() {
                       </div>
                     </button>
                   ))}
-                  {!snap.tasks.some((t) => t.id !== snap.assistantId) && (
+                  {!snap.tasks.some((t) => !!t.parentTaskId) && (
                     <p>Henüz iş yok.</p>
                   )}
                 </div>
