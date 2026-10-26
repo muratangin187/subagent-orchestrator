@@ -181,14 +181,13 @@ Limit okuması bir model turu başlatmaz. Codex app-server hesap limitleri ve Cl
 
 Desktop and Android intercept absolute filesystem and `file://` Markdown links.
 `POST /v1/artifacts/open` resolves the file on the selected conversation device,
-then tries other registered devices. Each device only serves regular supported
-files inside its configured workspace; hidden paths, symlink escapes, unsupported
-extensions and files larger than 5 MiB are rejected. Offline devices and missing
+then tries other registered devices. Each device only serves regular
+files inside its configured workspace; hidden paths, symlink escapes and files larger than 512 MiB are rejected. Offline devices and missing
 files produce a visible error. No shell command is constructed from the link.
 
 The gateway snapshots the bytes into its authenticated attachment store. Existing
 HTML/PDF/image/text viewers and desktop Save/Open actions use that snapshot;
-Android's **İndir** uses the system document picker to save on the phone. HTML
+Android's **İndir** uses the system document picker to save on the phone. Unknown types (including APK) and files above the 5 MiB preview limit download automatically: Android 10+ saves to Downloads, Android 9 opens the document picker, and desktop saves a uniquely named copy in Downloads and reveals it in Finder. No installer or executable is launched. Transfers use bounded 4 MiB chunks, with source-version checks during snapshot creation and incomplete-file cleanup. Markdown has formatted and raw-source views on both clients. HTML
 previews retain their isolated rendering policies; relative sibling resources
 are not fetched. The source file is not changed. A later click reads the current
 source again. Files outside a device's configured workspace must first be placed

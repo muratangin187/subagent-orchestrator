@@ -8,7 +8,8 @@ contextBridge.exposeInMainWorld("desktop", {
   disconnect: () => ipcRenderer.invoke("disconnect"),
   request: (path, body) => ipcRenderer.invoke("request", path, body),
   openLink: (url) => ipcRenderer.invoke("open-link", url),
-  saveAttachment: (id) => ipcRenderer.invoke("save-attachment", id),
+  saveAttachment: (id, automatic = false) =>
+    ipcRenderer.invoke("save-attachment", id, automatic),
   openAttachment: (id) => ipcRenderer.invoke("open-attachment", id),
   notify: (id) => ipcRenderer.invoke("notify", id),
   onCommand: (fn) => {

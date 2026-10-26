@@ -9,7 +9,8 @@ import {
 import { basename, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const artifactLimit = 5 * 1024 * 1024;
+export const artifactLimit = 512 * 1024 * 1024;
+export const artifactChunk = 4 * 1024 * 1024;
 export function artifactPath(link: string): string {
   if (link.length > 4096 || /[\x00-\x1f]/.test(link))
     throw Error("Invalid file link");
@@ -21,11 +22,8 @@ export function artifactPath(link: string): string {
   return resolve(path);
 }
 /** Only regular, bounded files inside the configured device workspace are exposed. */
-export function readArtifact(link: string, root: string) {
+export function readArtifact(link: string, root: string, offset = 0) {
   const path = artifactPath(link);
-  const extensions =
-    /\.(html?|pdf|png|jpe?g|webp|gif|txt|md|json|csv|log|ts|tsx|js|jsx|py|css|yaml|yml|xml)$/i;
-  if (!extensions.test(path)) throw Error("Unsupported file type");
   const within = (candidate: string, base: string) => {
     const rel = relative(base, candidate);
     return rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel);
@@ -55,18 +53,28 @@ export function readArtifact(link: string, root: string) {
     );
     const stat = fstatSync(fd);
     if (!stat.isFile()) throw Error("Not a regular file");
-    if (stat.size > artifactLimit) throw Error("Dosya sınırı 5 MiB");
-    const bytes = Buffer.alloc(artifactLimit + 1);
-    let size = 0,
-      count = 0;
-    do {
-      count = readSync(fd, bytes, size, bytes.length - size, null);
+    if (stat.size > artifactLimit) throw Error("Dosya sınırı 512 MiB");
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > stat.size)
+      throw Error("Invalid file offset");
+    const bytes = Buffer.alloc(Math.min(artifactChunk, stat.size - offset));
+    let size = 0;
+    while (size < bytes.length) {
+      const count = readSync(
+        fd,
+        bytes,
+        size,
+        bytes.length - size,
+        offset + size,
+      );
+      if (!count) throw Error("File changed while reading");
       size += count;
-    } while (count && size < bytes.length);
-    if (size > artifactLimit) throw Error("Dosya sınırı 5 MiB");
+    }
     return {
       name: basename(path),
-      content: bytes.subarray(0, size).toString("base64"),
+      content: bytes.toString("base64"),
+      size: stat.size,
+      version: `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`,
+      nextOffset: offset + size,
     };
   } catch (error: any) {
     if (error.code === "ENOENT" || error.code === "ENOTDIR")

@@ -1361,18 +1361,34 @@ function App() {
                                             href.startsWith("/") ||
                                             href.startsWith("file:")
                                           ) {
-                                            setPreview(
-                                              await request(
-                                                "/v1/artifacts/open",
-                                                {
-                                                  path: href,
-                                                  deviceId:
-                                                    task?.deviceId ||
-                                                    external?.deviceId ||
-                                                    snap.localDeviceId,
-                                                },
-                                              ),
+                                            const file = await request(
+                                              "/v1/artifacts/open",
+                                              {
+                                                path: href,
+                                                deviceId:
+                                                  task?.deviceId ||
+                                                  external?.deviceId ||
+                                                  snap.localDeviceId,
+                                              },
                                             );
+                                            if (
+                                              !/\.(html?|pdf|png|jpe?g|webp|gif|txt|md|markdown|json|csv|log|ts|tsx|js|jsx|py|css|yaml|yml|xml)$/i.test(
+                                                file.name,
+                                              ) ||
+                                              file.size > 5 * 1024 * 1024
+                                            ) {
+                                              await window.desktop.saveAttachment(
+                                                file.id,
+                                              );
+                                            } else
+                                              setPreview(
+                                                file.content === undefined
+                                                  ? await request(
+                                                      "/v1/attachments/" +
+                                                        file.id,
+                                                    )
+                                                  : file,
+                                              );
                                           } else
                                             await window.desktop.openLink(href);
                                         });

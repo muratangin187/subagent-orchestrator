@@ -52,7 +52,9 @@ async function request(p, b, c = connection) {
     },
     body: b === undefined ? undefined : JSON.stringify(b),
     redirect: "error",
-    signal: AbortSignal.timeout(b === undefined ? 15000 : 55000),
+    signal: AbortSignal.timeout(
+      p === "/v1/artifacts/open" ? 300000 : b === undefined ? 15000 : 55000,
+    ),
   }).catch(() => {
     throw Error(
       b === undefined
@@ -235,14 +237,52 @@ else {
     });
     handle("request", (p, b) => request(p, b));
     handle("open-link", (url) => shell.openExternal(policy.webLink(url)));
-    handle("save-attachment", async (id) => {
+    handle("save-attachment", async (id, automatic = false) => {
       if (!/^[a-f0-9-]{36}$/i.test(id)) throw Error("Geçersiz dosya.");
-      const a = await request("/v1/attachments/" + id);
-      const r = await dialog.showSaveDialog(win, {
-        defaultPath: path.basename(a.name),
-      });
+      let a = await request("/v1/attachments/" + id + "?offset=0");
+      const r =
+        automatic === true
+          ? {
+              filePath: path.join(
+                app.getPath("downloads"),
+                path.parse(path.basename(a.name)).name +
+                  "-" +
+                  require("node:crypto").randomUUID().slice(0, 8) +
+                  path.extname(a.name),
+              ),
+              canceled: false,
+            }
+          : await dialog.showSaveDialog(win, {
+              defaultPath: path.basename(a.name),
+            });
       if (r.canceled) return false;
-      await fs.writeFile(r.filePath, Buffer.from(a.content, "base64"));
+      const temp =
+        r.filePath + "." + require("node:crypto").randomUUID() + ".part";
+      try {
+        const file = await fs.open(temp, "wx", 0o600);
+        try {
+          let offset = 0;
+          do {
+            const bytes = Buffer.from(a.content, "base64");
+            if (
+              offset + bytes.length !== a.nextOffset ||
+              (!bytes.length && offset < a.size)
+            )
+              throw Error("Incomplete download");
+            await file.writeFile(bytes);
+            offset = a.nextOffset;
+            if (offset >= a.size) break;
+            a = await request("/v1/attachments/" + id + "?offset=" + offset);
+          } while (true);
+        } finally {
+          await file.close();
+        }
+        await fs.rename(temp, r.filePath);
+        if (automatic === true) shell.showItemInFolder(r.filePath);
+      } catch (error) {
+        await fs.unlink(temp).catch(() => {});
+        throw error;
+      }
       return true;
     });
     handle("open-attachment", async (id) => {

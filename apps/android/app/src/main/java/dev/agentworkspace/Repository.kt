@@ -151,7 +151,8 @@ class Repository(context: Context) {
         if (auth) builder.header("Authorization", "Bearer " + (vault.token() ?: ""))
         if (body != null)
             builder.post(body.toString().toRequestBody("application/json".toMediaType()))
-        http.newCall(builder.build()).execute().use { r ->
+        val client = if (path == "/v1/artifacts/open") http.newBuilder().readTimeout(5, TimeUnit.MINUTES).build() else http
+        client.newCall(builder.build()).execute().use { r ->
             val raw = r.body?.string().orEmpty()
             val value = try { JSONObject(raw) } catch (_: Exception) {
                 throw IllegalStateException(if (body == null) "Sunucu yanıtı alınamadı. Bağlantıyı kontrol et." else "Gönderim sonucu belirsiz. Yeniden göndermeden önce sohbeti kontrol et.")

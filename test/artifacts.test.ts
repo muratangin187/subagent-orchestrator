@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   mkdtempSync,
+  truncateSync,
   writeFileSync,
   symlinkSync,
   mkdirSync,
@@ -37,12 +38,18 @@ test("artifact readers preserve unicode, resolve file URLs, and bound workspace 
     assert.throws(() => artifactPath("https://example.com/file.pdf"));
     assert.throws(() => artifactPath("file://remote/report.pdf"));
     assert.throws(() => readArtifact(join(root, ".secret.json"), root));
-    assert.throws(() => readArtifact(join(root, "run.exe"), root));
+    writeFileSync(join(root, "app.apk"), Buffer.alloc(6 * 1024 * 1024, 7));
+    const first = readArtifact(join(root, "app.apk"), root);
+    assert.equal(first.size, 6 * 1024 * 1024);
+    const second = readArtifact(join(root, "app.apk"), root, first.nextOffset);
+    assert.equal(second.nextOffset, first.size);
+    assert.equal(second.version, first.version);
     symlinkSync("/etc/passwd", join(root, "secret.txt"));
     assert.throws(() => readArtifact(join(root, "secret.txt"), root));
     mkdirSync(join(root, "folder.txt"));
     assert.throws(() => readArtifact(join(root, "folder.txt"), root));
-    writeFileSync(join(root, "large.txt"), Buffer.alloc(artifactLimit + 1));
+    writeFileSync(join(root, "large.txt"), "");
+    truncateSync(join(root, "large.txt"), artifactLimit + 1);
     assert.throws(() => readArtifact(join(root, "large.txt"), root));
   } finally {
     rmSync(root, { recursive: true, force: true });

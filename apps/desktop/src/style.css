@@ -1613,3 +1613,7 @@ header button {
 }
 .queued-message span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .queued-message button { flex-shrink: 0; }
+.markdown-preview { white-space: normal; font-size: 14px; line-height: 1.65; }
+.markdown-preview pre { overflow: auto; padding: 12px; background: var(--surface); }
+.markdown-preview table { border-collapse: collapse; }
+.markdown-preview th, .markdown-preview td { border: 1px solid currentColor; padding: 6px 10px; }

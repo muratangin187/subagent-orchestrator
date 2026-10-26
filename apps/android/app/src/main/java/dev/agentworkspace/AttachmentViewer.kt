@@ -35,7 +35,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-data class AttachmentPreview(val name: String, val file: File)
+data class AttachmentPreview(val name: String, val file: File, val downloadOnly: Boolean = false)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +56,7 @@ fun AttachmentViewer(preview: AttachmentPreview, onClose: () -> Unit) {
             Toast.makeText(context, if (success) "Dosya kaydedildi" else "Dosya kaydedilemedi", Toast.LENGTH_LONG).show()
         }
     }
+    LaunchedEffect(preview.file) { if (preview.downloadOnly) save.launch(preview.name) }
     val extension = preview.name.substringAfterLast('.', "").lowercase()
     Dialog(
         onDismissRequest = onClose,
@@ -121,7 +122,9 @@ fun AttachmentViewer(preview: AttachmentPreview, onClose: () -> Unit) {
             },
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
-                when (extension) {
+                if (preview.downloadOnly) Text("Bu dosya önizlenemez. İndir düğmesiyle kaydedebilirsin.", Modifier.padding(24.dp))
+                else when (extension) {
+                    "md", "markdown" -> MarkdownPreview(preview.file)
                     "pdf" -> PdfPreview(preview.file)
                     "html",
                     "htm" -> HtmlPreview(preview.file)
@@ -377,4 +380,25 @@ private fun HtmlPreview(file: File) {
             it.destroy()
         },
     )
+}
+
+@Composable
+private fun MarkdownPreview(file: File) {
+    var source by remember(file) { mutableStateOf(false) }
+    var text by remember(file) { mutableStateOf<String?>(null) }
+    LaunchedEffect(file) {
+        text = withContext(Dispatchers.IO) { file.bufferedReader().use { reader ->
+            val buffer = CharArray(100001)
+            var size = 0
+            while (size < buffer.size) { val n = reader.read(buffer, size, buffer.size - size); if (n < 0) break; size += n }
+            String(buffer, 0, minOf(size, 100000)) + if (size > 100000) "\n[Önizleme kısaltıldı]" else ""
+        } }
+    }
+    Column(Modifier.fillMaxSize()) {
+        TextButton(onClick = { source = !source }) { Text(if (source) "Önizleme" else "Ham metin") }
+        if (source) TextPreview(file)
+        else Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp)) {
+            MarkdownMessage(text ?: "Yükleniyor…")
+        }
+    }
 }

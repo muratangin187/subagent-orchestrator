@@ -50,6 +50,7 @@ export async function worker() {
           result = readArtifact(
             z.string().max(4096).parse(q.path),
             z.string().startsWith("/").parse(q.root),
+            z.number().int().nonnegative().default(0).parse(q.offset),
           );
         else if (q.op === "limits") result = await usageLimits();
         else if (q.op === "models") result = await modelCatalog();

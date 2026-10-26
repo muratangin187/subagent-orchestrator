@@ -1,4 +1,9 @@
-import { readArtifact, artifactPath } from "./artifacts.js";
+import {
+  readArtifact,
+  artifactPath,
+  artifactLimit,
+  artifactChunk,
+} from "./artifacts.js";
 import { usageLimits } from "../providers/limits.js";
 import { modelCatalog } from "../providers/catalog.js";
 import { selectionSchema } from "../schema.js";
@@ -12,6 +17,11 @@ import {
   randomUUID,
 } from "node:crypto";
 import {
+  appendFileSync,
+  unlinkSync,
+  openSync,
+  closeSync,
+  readSync,
   readFileSync,
   writeFileSync,
   existsSync,
@@ -455,16 +465,51 @@ export async function startGateway(
             z.string().max(7_000_000).parse(file.content),
             "base64",
           );
-          if (bytes.length > 5 * 1024 * 1024) throw Error("Dosya sınırı 5 MiB");
+          if (bytes.length > artifactChunk || file.size > artifactLimit)
+            throw Error("Invalid file size");
           if (existsSync(uploads) && lstatSync(uploads).isSymbolicLink())
             throw Error("Invalid attachment directory");
           mkdirSync(uploads, { recursive: true, mode: 0o700 });
           const cached = join(uploads, id + "-" + name);
           writeFileSync(cached, bytes, { flag: "wx", mode: 0o600 });
+          try {
+            let offset = bytes.length;
+            while (offset < file.size) {
+              const part = remote(d.id)
+                ? await deviceQuery(devices!.get(d.id), {
+                    op: "artifact",
+                    path,
+                    root: d.cwd,
+                    offset,
+                  })
+                : readArtifact(path, d.cwd, offset);
+              if (part.missing || part.version !== file.version)
+                throw Error("Dosya aktarım sırasında değişti; tekrar dene.");
+              const chunk = Buffer.from(part.content, "base64");
+              if (
+                !chunk.length ||
+                chunk.length > artifactChunk ||
+                offset + chunk.length > file.size
+              )
+                throw Error("Invalid file chunk");
+              appendFileSync(cached, chunk);
+              offset += chunk.length;
+            }
+          } catch (error) {
+            unlinkSync(cached);
+            throw error;
+          }
+
           controller.store.db
             .prepare("INSERT INTO workspace_uploads VALUES(?,?,?)")
             .run(id, name, cached);
-          send(200, { id, name, content: file.content, deviceId: d.id });
+          send(200, {
+            id,
+            name,
+            size: file.size,
+            content: file.size <= artifactChunk ? file.content : undefined,
+            deviceId: d.id,
+          });
           return;
         }
         send(404, {
@@ -489,12 +534,45 @@ export async function startGateway(
             join(realpathSync(uploads), id + "-" + row.name)
         )
           throw Error("Invalid attachment path");
-        if (statSync(row.path).size > 5 * 1024 * 1024)
-          throw Error("Attachment too large");
+        const size = statSync(row.path).size;
+        if (size > artifactLimit) throw Error("Dosya sınırı 512 MiB");
+        const chunked = url.searchParams.has("offset");
+        const offset = chunked
+          ? z.coerce
+              .number()
+              .int()
+              .min(0)
+              .max(size)
+              .parse(url.searchParams.get("offset"))
+          : 0;
+        if (!chunked && size > 5 * 1024 * 1024)
+          throw Error("Use chunked download");
+        const bytes = Buffer.alloc(
+          chunked ? Math.min(artifactChunk, size - offset) : size,
+        );
+        const fd = openSync(row.path, "r");
+        try {
+          let read = 0;
+          while (read < bytes.length) {
+            const n = readSync(
+              fd,
+              bytes,
+              read,
+              bytes.length - read,
+              offset + read,
+            );
+            if (!n) throw Error("Incomplete attachment");
+            read += n;
+          }
+        } finally {
+          closeSync(fd);
+        }
         send(200, {
           id,
           name: row.name,
-          content: readFileSync(row.path).toString("base64"),
+          size,
+          nextOffset: offset + bytes.length,
+          content: bytes.toString("base64"),
         });
         return;
       }

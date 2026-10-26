@@ -523,6 +523,29 @@ test("local chat artifacts require auth and produce downloadable immutable snaps
     assert.equal(response.status, 200);
     const file: any = await response.json();
     assert.equal(file.name, "report.html");
+    const apkPath = join(s.c.scope.cwd, "app.apk");
+    const apkBytes = Buffer.alloc(6 * 1024 * 1024, 17);
+    writeFileSync(apkPath, apkBytes);
+    const apkResponse = await fetch(base + "/v1/artifacts/open", {
+      ...payload,
+      headers,
+      body: JSON.stringify({ path: apkPath }),
+    });
+    assert.equal(apkResponse.status, 200);
+    const apk: any = await apkResponse.json();
+    assert.equal(apk.size, apkBytes.length);
+    const parts: Buffer[] = [];
+    let offset = 0;
+    while (offset < apk.size) {
+      const part: any = await (
+        await fetch(base + "/v1/attachments/" + apk.id + "?offset=" + offset, {
+          headers,
+        })
+      ).json();
+      parts.push(Buffer.from(part.content, "base64"));
+      offset = part.nextOffset;
+    }
+    assert.deepEqual(Buffer.concat(parts), apkBytes);
     writeFileSync(path, "changed");
     const download: any = await (
       await fetch(base + "/v1/attachments/" + file.id, { headers })

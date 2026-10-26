@@ -553,16 +553,47 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                                     attachment.name.replace(Regex("[^\\p{L}\\p{N}._-]"), "_"),
                             )
                         if (!cached.exists()) {
-                            val response = repo.request("/v1/attachments/" + attachment.id)
-                            val bytes = Base64.decode(response.getString("content"), Base64.DEFAULT)
-                            require(bytes.size <= 5 * 1024 * 1024) { "Dosya sınırı 5 MiB" }
                             val temp = java.io.File(dir, attachment.id + ".part")
-                            temp.writeBytes(bytes)
+                            try {
+                                temp.outputStream().use { output ->
+                                    var offset = 0L
+                                    do {
+                                        val response = repo.request("/v1/attachments/" + attachment.id + "?offset=" + offset)
+                                        val total = response.getLong("size")
+                                        require(total <= 512L * 1024 * 1024) { "Dosya sınırı 512 MiB" }
+                                        val bytes = Base64.decode(response.getString("content"), Base64.DEFAULT)
+                                        require(bytes.size <= 4 * 1024 * 1024 && (bytes.isNotEmpty() || offset == total)) { "Eksik dosya parçası" }
+                                        require(offset + bytes.size == response.getLong("nextOffset")) { "Geçersiz dosya parçası" }
+                                        output.write(bytes)
+                                        offset += bytes.size
+                                    } while (offset < total)
+                                }
+                            } catch (e: Exception) { temp.delete(); throw e }
                             check(temp.renameTo(cached)) { "Dosya kaydedilemedi" }
                         }
                         cached
                     }
-                update { it.copy(attachmentPreview = AttachmentPreview(attachment.name, file)) }
+                val previewable = Regex("(?i).*\\.(html?|pdf|png|jpe?g|webp|gif|txt|md|markdown|json|csv|log|ts|tsx|js|jsx|py|css|yaml|yml|xml)$").matches(attachment.name)
+                if (!previewable || file.length() > 5L * 1024 * 1024) {
+                    if (android.os.Build.VERSION.SDK_INT < 29) {
+                        update { it.copy(attachmentPreview = AttachmentPreview(attachment.name, file, true)) }
+                        return@launch
+                    }
+                    withContext(Dispatchers.IO) {
+                        val resolver = getApplication<Application>().contentResolver
+                        val values = android.content.ContentValues().apply {
+                            put(android.provider.MediaStore.Downloads.DISPLAY_NAME, attachment.name)
+                            put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/octet-stream")
+                            put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+                        }
+                        val uri = requireNotNull(resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values))
+                        try {
+                            requireNotNull(resolver.openOutputStream(uri)).use { output -> file.inputStream().use { it.copyTo(output) } }
+                            resolver.update(uri, android.content.ContentValues().apply { put(android.provider.MediaStore.Downloads.IS_PENDING, 0) }, null, null)
+                        } catch (e: Exception) { resolver.delete(uri, null, null); throw e }
+                    }
+                    android.widget.Toast.makeText(getApplication(), "İndirilenler klasörüne kaydedildi: " + attachment.name, android.widget.Toast.LENGTH_LONG).show()
+                } else update { it.copy(attachmentPreview = AttachmentPreview(attachment.name, file)) }
             } catch (e: Exception) {
                 update {
                     it.copy(

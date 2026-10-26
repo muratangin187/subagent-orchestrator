@@ -71,7 +71,7 @@ declare global {
       disconnect(): Promise<void>;
       request<T = any>(path: string, body?: unknown): Promise<T>;
       openLink(url: string): Promise<void>;
-      saveAttachment(id: string): Promise<boolean>;
+      saveAttachment(id: string, automatic?: boolean): Promise<boolean>;
       openAttachment(id: string): Promise<void>;
       notify(id: string): Promise<void>;
       onCommand(fn: (cmd: string) => void): () => void;

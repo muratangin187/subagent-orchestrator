@@ -1,3 +1,5 @@
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import React, { useEffect, useRef, useState } from "react";
 import {
   getDocument,
@@ -149,6 +151,34 @@ export function AttachmentPreview({ file }: { file: Attachment }) {
       />
     );
   const text = new TextDecoder().decode(bytes(file.content));
+  if (/\.(md|markdown)$/i.test(file.name))
+    return (
+      <div className="document-preview">
+        <div className="preview-toolbar">
+          <button onClick={() => setSource((v) => !v)}>
+            {source ? "Önizleme" : "Ham metin"}
+          </button>
+          <button onClick={() => void window.desktop.copyText(text)}>
+            Kopyala
+          </button>
+        </div>
+        {source ? (
+          <pre className="file-preview">{text.slice(0, 100000)}</pre>
+        ) : (
+          <div className="file-preview markdown-preview">
+            <Markdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                img: ({ alt }) => <span>[Görsel: {alt}]</span>,
+                a: ({ children }) => <span>{children}</span>,
+              }}
+            >
+              {text.slice(0, 100000)}
+            </Markdown>
+          </div>
+        )}
+      </div>
+    );
   if (/\.html?$/i.test(file.name))
     return (
       <div className="document-preview">
