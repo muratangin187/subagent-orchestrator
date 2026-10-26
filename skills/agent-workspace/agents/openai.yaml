@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Workspace"
+  short_description: "Mac, Android ve sunucu değişikliklerini tamamla"
+  default_prompt: "Use $agent-workspace to implement my requested change, verify it, install the affected apps safely, and push the source changes to GitHub."

@@ -396,3 +396,32 @@ Local-first connection storage stays in the main process and is encrypted with m
 ## Multi-device workspace
 
 Keep your assistant on an always-on computer and send individual sessions or nested agents to another computer over SSH. Android, macOS and Even G2 share the same history and device registry. Children inherit their parent’s device; uncertain disconnects require explicit recovery. See [multi-device setup and migration](docs/multi-device.md).
+
+## Codex ve Claude Code ile uygulamayı geliştirme
+
+[agent-workspace becerisi](skills/agent-workspace/SKILL.md), yeni oturumlarda proje
+bağlamını, Mac/Android/G2 kaynaklarını, doğrulamayı ve güvenli kurulum akışını yükler.
+Depoyu klonladıktan sonra iki istemci için ortak kaynağı kurun:
+
+```sh
+python3 scripts/install-maintenance-skill.py
+```
+
+Yeni bir Codex oturumunda:
+
+```text
+$agent-workspace Mobil sohbet ekranında bekleyen mesajları daha belirgin göster.
+```
+
+Yeni bir Claude Code oturumunda:
+
+```text
+/agent-workspace Mobil sohbet ekranında bekleyen mesajları daha belirgin göster.
+```
+
+Beceri hem masaüstü hem mobil etkilerini kontrol eder; test, uygun kurulum ve kaynak
+push adımlarını kapsar. Aktif işleri izinsiz kesmez. İsterseniz “yalnızca planla”,
+“henüz kurma” veya “push etme” diyerek kapsamı daraltabilirsiniz. Kurulum mevcut
+başka bir becerinin üzerine yazmaz; iki istemci aynı repo dosyasına bağlanır.
+Cihaza özel yolları isteğe bağlı `~/.config/agent-workspace/maintenance.json` içinde,
+repo dışında tutun. Parola ve token koymayın. Beceri listesi için yeni oturum açın.
