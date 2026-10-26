@@ -2,6 +2,7 @@ const {
   app,
   BrowserWindow,
   ipcMain,
+  clipboard,
   protocol,
   net,
   session,
@@ -121,6 +122,12 @@ function createWindow() {
       sandbox: true,
     },
   });
+  win.on("app-command", (_event, command) => {
+    if (command === "browser-backward")
+      win?.webContents.send("command", "back");
+    if (command === "browser-forward")
+      win?.webContents.send("command", "forward");
+  });
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (e) => e.preventDefault());
   win.webContents.on("will-frame-navigate", (e) => {
@@ -220,6 +227,11 @@ else {
     handle("disconnect", async () => {
       connection = undefined;
       await fs.rm(file(), { force: true });
+    });
+    handle("copy-text", (text) => {
+      if (typeof text !== "string" || text.length > 2_000_000)
+        throw Error("Geçersiz metin.");
+      clipboard.writeText(text);
     });
     handle("request", (p, b) => request(p, b));
     handle("open-link", (url) => shell.openExternal(policy.webLink(url)));

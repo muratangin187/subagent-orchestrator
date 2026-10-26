@@ -2,6 +2,8 @@
 
 A native Kotlin/Compose companion for a computer running the standalone orchestrator. Two views share one local service: **Assistant**, a persistent Codex conversation that delegates long tasks, and **Sessions**, for Codex/Claude conversations and local history. A job drawer opens child transcripts and pending questions.
 
+Messages include raw-text copy. Expand **Worked for** to inspect the turn’s tool calls and provider-published thinking; tap an item for its input/output. Active turns show a running timer.
+
 ## Run the computer service
 
 Requires the matching release package or repository build, Node 22.16+, signed-in Codex/Claude CLIs, and Tailscale on both devices. Use a separate state directory so the mobile service does not interfere with existing MCP daemons:

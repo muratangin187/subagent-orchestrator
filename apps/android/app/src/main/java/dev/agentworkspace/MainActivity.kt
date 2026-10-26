@@ -662,9 +662,10 @@ fun WorkspaceApp(model: WorkspaceModel) {
                         }
                     }
                     val visibleLines = s.lines
+                    val firstAssistantByRun = visibleLines.filter { it.role == "assistant" && it.runId.isNotBlank() }.groupBy { it.runId }.mapValues { it.value.first().id }
                     val list = rememberLazyListState()
                     var initiallyPositioned by remember(model.selected) { mutableStateOf(false) }
-                    LaunchedEffect(model.selected, visibleLines.size) {
+                    LaunchedEffect(model.selected, visibleLines.size, visibleLines.lastOrNull()?.text) {
                         if (
                             visibleLines.isNotEmpty() &&
                                 (!initiallyPositioned ||
@@ -713,6 +714,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                 }
                             }
                         items(visibleLines, key = { it.id }) { line ->
+                            if (firstAssistantByRun[line.runId] == line.id) s.workGroups[line.runId]?.let { WorkActivityGroup(it) }
                             Row(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement =
@@ -737,13 +739,8 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                             .fillMaxWidth(if (line.role == "user") 0.9f else 0.96f),
                                 ) {
                                     Column(Modifier.padding(16.dp)) {
-                                        if (line.role != "user")
-                                            Text(
-                                                if (line.role == "error") "Engel" else "Asistan",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.primary,
-                                            )
                                         MarkdownMessage(line.text)
+                                        RawCopyButton(line.text)
                                         line.attachments.forEach { attachment ->
                                             Spacer(Modifier.height(10.dp))
                                             AttachmentCard(
@@ -756,6 +753,10 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                     }
                                 }
                             }
+                        }
+                        val currentRun = current?.optString("runId") ?: ""
+                        if (currentRun.isNotBlank() && !firstAssistantByRun.containsKey(currentRun)) item {
+                            s.workGroups[currentRun]?.let { WorkActivityGroup(it) }
                         }
                         if (current != null && isActiveJob(current))
                             item {
@@ -1165,4 +1166,35 @@ private fun JobIndicator(status: String) {
             .alpha(if (waiting) 1f else opacity)
             .background(color, CircleShape)
     )
+}
+
+@Composable
+fun WorkingTime(start: Long, end: Long) {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(start, end) {
+        while (end == 0L && start > 0) {
+            now = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+    if (start > 0) {
+        val seconds = ((if (end > 0) end else now) - start).coerceAtLeast(0) / 1000
+        Text("${if (end > 0) "Worked for" else "Working for"} ${seconds / 60}m ${seconds % 60}s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+    }
+}
+
+@Composable
+private fun RawCopyButton(text: String) {
+    val context = LocalContext.current
+    var copied by remember(text) { mutableStateOf(false) }
+    LaunchedEffect(copied) { if (copied) { kotlinx.coroutines.delay(2000); copied = false } }
+    TextButton(onClick = {
+        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Mesaj", text))
+        copied = true
+    }, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)) {
+        Icon(Icons.Default.ContentCopy, null, Modifier.size(14.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(if (copied) "Kopyalandı" else "Kopyala", style = MaterialTheme.typography.labelSmall)
+    }
 }

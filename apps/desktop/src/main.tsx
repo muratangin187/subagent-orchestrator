@@ -1,10 +1,13 @@
+import { WorkGroup } from "./WorkGroup";
+import { workGroups } from "./timeline.mjs";
 import { chatStatus } from "./chat-status.mjs";
 import { AttachmentPreview } from "./AttachmentPreview";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
+  Copy,
   Loader2,
   Sparkles,
   MessageSquare,
@@ -44,6 +47,32 @@ import {
   type Native,
 } from "./types";
 import "./style.css";
+function CopyMessage({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
+  return (
+    <button
+      aria-label="Ham metni kopyala"
+      onClick={() =>
+        void window.desktop
+          .copyText(text)
+          .then(() => {
+            setCopyError(false);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          })
+          .catch(() => setCopyError(true))
+      }
+    >
+      <Copy size={13} />
+      {copyError
+        ? "Kopyalanamadı · Tekrar dene"
+        : copied
+          ? "Kopyalandı"
+          : "Kopyala"}
+    </button>
+  );
+}
 const empty: Snapshot = { tasks: [], inputs: [] };
 const uid = () => crypto.randomUUID();
 const time = (n: number) =>
@@ -58,6 +87,9 @@ function Badge({ task }: { task: Task }) {
     </span>
   );
 }
+type Route = { view: string; selected: string; external?: Native | null };
+const routeKey = (r: Route) =>
+  r.view === "chat" || r.view === "assistant" ? "chat:" + r.selected : r.view;
 function App() {
   const [connected, setConnected] = useState(false),
     [origin, setOrigin] = useState(""),
@@ -103,6 +135,23 @@ function App() {
     [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([]),
     [voices, setVoices] = useState<{ id: string; name: string }[]>([]),
     [voiceId, setVoiceId] = useState("");
+  const route = useRef<Route>({ view: "assistant", selected: "assistant" });
+  const positions = useRef(new Map<string, number>());
+  const transcripts = useRef(
+    new Map<
+      string,
+      {
+        events: Event[];
+        messages: Message[];
+        cursor: number;
+        older: number | null;
+        nativeCursor: string | null;
+      }
+    >(),
+  );
+  const pendingScroll = useRef<number | null>(null);
+  const restoreRoute = useRef<(r: Route) => void>(() => {});
+  const commandHandler = useRef<(cmd: string) => void>(() => {});
   const selection = useRef(selected),
     epoch = useRef(0),
     lastTasks = useRef<Map<string, string> | null>(null),
@@ -249,24 +298,67 @@ function App() {
   useEffect(() => {
     if (!external) setMessages(toMessages(events));
   }, [events, external]);
+  useLayoutEffect(() => {
+    const el =
+      view === "chat" || view === "assistant"
+        ? scroll.current
+        : document.querySelector<HTMLElement>(".page");
+    if (!el) return;
+    if (pendingScroll.current !== null) {
+      const chat = view === "chat" || view === "assistant";
+      if (chat && !messages.length) return;
+      el.scrollTop = pendingScroll.current;
+      pendingScroll.current = null;
+      nearBottom.current =
+        el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    } else if (
+      (view === "chat" || view === "assistant") &&
+      nearBottom.current
+    ) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [view, selected, messages, natives.length]);
   useEffect(() => {
-    if (nearBottom.current)
-      scroll.current?.scrollTo({
-        top: scroll.current.scrollHeight,
-        behavior: "smooth",
-      });
-  }, [messages.length]);
-  useEffect(
-    () =>
-      window.desktop.onCommand((cmd) => {
-        if (cmd === "search") search.current?.focus();
-        else if (cmd === "new" || cmd === "settings") setModal(cmd);
-        else navigate(cmd);
-      }),
-    [],
-  );
+    history.replaceState({ workspaceRoute: route.current }, "");
+    history.scrollRestoration = "manual";
+    const pop = (e: PopStateEvent) => {
+      if (e.state?.workspaceRoute) restoreRoute.current(e.state.workspaceRoute);
+    };
+    const down = (e: MouseEvent) => {
+      if (e.button === 3 || e.button === 4) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.button === 3) history.back();
+        else history.forward();
+      }
+    };
+    const cancel = (e: MouseEvent) => {
+      if (e.button === 3 || e.button === 4) e.preventDefault();
+    };
+    window.addEventListener("popstate", pop);
+    window.addEventListener("mousedown", down, true);
+    window.addEventListener("mouseup", cancel, true);
+    window.addEventListener("auxclick", cancel, true);
+    const off = window.desktop.onCommand((cmd) => commandHandler.current(cmd));
+    return () => {
+      window.removeEventListener("popstate", pop);
+      window.removeEventListener("mousedown", down, true);
+      window.removeEventListener("mouseup", cancel, true);
+      window.removeEventListener("auxclick", cancel, true);
+      off();
+    };
+  }, []);
   useEffect(() => {
     function key(e: KeyboardEvent) {
+      if (
+        (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) ||
+        (e.metaKey && (e.key === "[" || e.key === "]"))
+      ) {
+        e.preventDefault();
+        if (e.key === "ArrowLeft" || e.key === "[") history.back();
+        else history.forward();
+        return;
+      }
       if (e.key === "Escape") {
         setModal("");
         setPreview(null);
@@ -287,27 +379,74 @@ function App() {
       audio.current?.pause();
     };
   }, []);
-  function navigate(v: string) {
-    setView(v);
-    if (v === "assistant") choose("assistant");
+  function savePage() {
+    const current = route.current;
+    const el =
+      current.view === "chat" || current.view === "assistant"
+        ? scroll.current
+        : document.querySelector<HTMLElement>(".page");
+    if (el) positions.current.set(routeKey(current), el.scrollTop);
+    if (current.view === "chat" || current.view === "assistant") {
+      transcripts.current.set(current.selected, {
+        events,
+        messages,
+        cursor: cursor.current,
+        older,
+        nativeCursor: nativeHistoryCursor,
+      });
+      if (transcripts.current.size > 20)
+        transcripts.current.delete(transcripts.current.keys().next().value!);
+    }
   }
-  function choose(id: string, n?: Native) {
+  function visit(next: Route, record = true) {
+    if (JSON.stringify(route.current) === JSON.stringify(next)) return;
+    savePage();
+    if (record) history.pushState({ workspaceRoute: next }, "");
+    route.current = next;
+    pendingScroll.current = positions.current.get(routeKey(next)) ?? null;
+    setModal("");
+    setPreview(null);
+    setView(next.view);
+    if (next.view !== "chat" && next.view !== "assistant") {
+      pendingScroll.current ??= 0;
+      return;
+    }
     epoch.current++;
-    selection.current = id;
-    cursor.current = 0;
-    setSelected(id);
-    setExternal(n || null);
+    selection.current = next.selected;
+    const cached = transcripts.current.get(next.selected);
+    cursor.current = cached?.cursor ?? 0;
+    setSelected(next.selected);
+    setExternal(next.external || null);
     setNativeConfirmed(false);
-    setMessages([]);
-    setEvents([]);
-    setOlder(null);
-    setNativeHistoryCursor(null);
+    setMessages(cached?.messages || []);
+    setEvents(cached?.events || []);
+    setOlder(cached?.older ?? null);
+    setNativeHistoryCursor(cached?.nativeCursor ?? null);
     setAnswers({});
     setFiles([]);
-    nearBottom.current = true;
-    if (n) void work(() => loadNativeMessages(n));
-    else setView(id === "assistant" ? "assistant" : "chat");
+    nearBottom.current = pendingScroll.current === null;
+    if (next.external && !cached)
+      void work(() => loadNativeMessages(next.external!));
   }
+  restoreRoute.current = (r) => visit(r, false);
+  function navigate(v: string) {
+    if (v === "assistant") choose("assistant");
+    else visit({ ...route.current, view: v });
+  }
+  function choose(id: string, n?: Native) {
+    visit({
+      view: id === "assistant" ? "assistant" : "chat",
+      selected: id,
+      external: n || null,
+    });
+  }
+  commandHandler.current = (cmd) => {
+    if (cmd === "back") history.back();
+    else if (cmd === "forward") history.forward();
+    else if (cmd === "search") search.current?.focus();
+    else if (cmd === "new" || cmd === "settings") setModal(cmd);
+    else navigate(cmd);
+  };
   async function connect(local: boolean) {
     const r = local
       ? await window.desktop.connectLocal()
@@ -366,7 +505,7 @@ function App() {
     if (external) {
       setExternal(null);
       choose("assistant");
-      setView("sessions");
+      navigate("sessions");
     }
     await refresh();
     nearBottom.current = true;
@@ -459,7 +598,6 @@ function App() {
         : list,
     );
     setNativeHistoryCursor(r.nextCursor || null);
-    setView("chat");
   }
   useEffect(() => {
     if (modal !== "voice" || speakerMuted) return;
@@ -703,6 +841,15 @@ function App() {
   ).filter((t) =>
     title(t).toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr")),
   );
+  const groupedWork = workGroups(events);
+  const firstAssistant = new Map<string, string>();
+  for (const message of messages)
+    if (
+      message.role === "assistant" &&
+      message.runId &&
+      !firstAssistant.has(message.runId)
+    )
+      firstAssistant.set(message.runId, message.id);
   const heading =
     external?.title ||
     (selected === "assistant" ? "Asistanın" : task ? title(task) : "Sohbet");
@@ -742,7 +889,7 @@ function App() {
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
-              setView("sessions");
+              navigate("sessions");
             }}
           />
           <kbd>⌘ K</kbd>
@@ -1133,69 +1280,80 @@ function App() {
                   </div>
                 ) : (
                   messages.map((m) => (
-                    <article key={m.id} className={"message " + m.role}>
-                      <div className="message-label">
-                        {m.role === "user"
-                          ? "Sen"
-                          : m.role === "error"
-                            ? "İşlem bilgisi"
-                            : "Asistan"}
-                        {m.role === "assistant" && selected === "assistant" && (
-                          <button
-                            aria-label="Yanıtı seslendir"
-                            title="Yanıtı seslendir"
-                            onClick={() => void work(() => speak(m))}
-                          >
-                            <Volume2 size={13} />
-                          </button>
+                    <React.Fragment key={m.id}>
+                      {m.runId &&
+                        firstAssistant.get(m.runId) === m.id &&
+                        groupedWork[m.runId] && (
+                          <WorkGroup run={groupedWork[m.runId]} />
                         )}
-                      </div>
-                      <div className="message-body">
-                        <Markdown
-                          remarkPlugins={[remarkGfm]}
-                          components={{
-                            a: ({ href, children }) => (
-                              <a
-                                href={href}
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  if (href)
-                                    void window.desktop
-                                      .openLink(href)
-                                      .catch(fail);
-                                }}
-                              >
-                                {children}
-                              </a>
-                            ),
-                            img: ({ alt }) => (
-                              <span className="quiet">[Görsel: {alt}]</span>
-                            ),
-                          }}
-                        >
-                          {m.text}
-                        </Markdown>
-                        {m.attachments?.map((a) => (
-                          <button
-                            className="attachment"
-                            key={a.id}
-                            onClick={() =>
-                              void work(async () =>
-                                setPreview(
-                                  await request("/v1/attachments/" + a.id),
-                                ),
-                              )
-                            }
+                      <article className={"message " + m.role}>
+                        <div className="message-body">
+                          <Markdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              a: ({ href, children }) => (
+                                <a
+                                  href={href}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    if (href)
+                                      void window.desktop
+                                        .openLink(href)
+                                        .catch(fail);
+                                  }}
+                                >
+                                  {children}
+                                </a>
+                              ),
+                              img: ({ alt }) => (
+                                <span className="quiet">[Görsel: {alt}]</span>
+                              ),
+                            }}
                           >
-                            <FileText size={17} />
-                            {a.name}
-                            <ChevronRight size={14} />
-                          </button>
-                        ))}
-                      </div>
-                    </article>
+                            {m.text}
+                          </Markdown>
+                          {m.attachments?.map((a) => (
+                            <button
+                              className="attachment"
+                              key={a.id}
+                              onClick={() =>
+                                void work(async () =>
+                                  setPreview(
+                                    await request("/v1/attachments/" + a.id),
+                                  ),
+                                )
+                              }
+                            >
+                              <FileText size={17} />
+                              {a.name}
+                              <ChevronRight size={14} />
+                            </button>
+                          ))}
+                        </div>
+                        <div className="message-actions">
+                          <CopyMessage text={m.text} />
+                          {m.role === "assistant" &&
+                            selected === "assistant" && (
+                              <button
+                                aria-label="Yanıtı seslendir"
+                                title="Yanıtı seslendir"
+                                onClick={() => void work(() => speak(m))}
+                              >
+                                <Volume2 size={13} />
+                                Seslendir
+                              </button>
+                            )}
+                        </div>
+                      </article>
+                    </React.Fragment>
                   ))
                 )}
+                {!external &&
+                  task?.runId &&
+                  !firstAssistant.has(task.runId) &&
+                  groupedWork[task.runId] && (
+                    <WorkGroup run={groupedWork[task.runId]} />
+                  )}
               </div>
               {task?.question && (
                 <form
@@ -1530,7 +1688,7 @@ function App() {
                       setNewText("");
                       setModal("");
                       await refresh();
-                      setView("sessions");
+                      navigate("sessions");
                       if (r.taskId) choose(r.taskId);
                     });
                   }}

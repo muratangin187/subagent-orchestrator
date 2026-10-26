@@ -71,6 +71,24 @@ export class CodexDriver implements Driver {
         return;
       const p = m.params;
       if (m.method === "turn/started") this.turnId = p.turn.id;
+      if (
+        m.method === "item/started" &&
+        !["userMessage", "agentMessage"].includes(p.item?.type)
+      )
+        ctx.event({ type: "tool_started", payload: p.item });
+      // Only provider-published summaries, never raw reasoning text.
+      if (m.method === "item/reasoning/summaryTextDelta")
+        ctx.event({
+          type: "reasoning_summary",
+          payload: { itemId: p.itemId, text: p.delta },
+        });
+      if (m.method === "thread/tokenUsage/updated")
+        ctx.event({ type: "usage", payload: p.tokenUsage });
+      if (m.method === "item/commandExecution/outputDelta")
+        ctx.event({
+          type: "tool_output",
+          payload: { itemId: p.itemId, text: p.delta },
+        });
       if (m.method === "item/agentMessage/delta")
         ctx.event({
           type: "assistant_delta",
@@ -190,6 +208,7 @@ export class CodexDriver implements Driver {
           ? { ...params, threadId: ctx.task.sessionId }
           : params,
       );
+      ctx.event({ type: "provider_ready", payload: { provider: "codex" } });
       this.threadId = response.thread.id;
       ctx.session(this.threadId!);
       const sandboxPolicy = readOnly
@@ -210,6 +229,10 @@ export class CodexDriver implements Driver {
         input: [{ type: "text", text: ctx.run.prompt }],
         model: ctx.task.model,
         effort: ctx.task.effort,
+      });
+      ctx.event({
+        type: "provider_turn_started",
+        payload: { turnId: started.turn.id },
       });
       this.turnId = started.turn.id;
       this.resolveReady();

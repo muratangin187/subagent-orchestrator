@@ -1,3 +1,4 @@
+import { activityPatches } from "./activity.js";
 import { deviceQuery } from "../devices/query.js";
 import { createServer, type Server } from "node:http";
 import {
@@ -355,7 +356,15 @@ export async function startGateway(
             .get(id, firstId)
             ? firstId
             : null;
-        send(200, { ...events, status, olderCursor });
+        send(200, {
+          ...events,
+          messages: events.messages.map((e) => ({
+            ...e,
+            activity: activityPatches(e),
+          })),
+          status,
+          olderCursor,
+        });
         return;
       }
       if (req.method === "GET" && url.pathname.startsWith("/v1/attachments/")) {

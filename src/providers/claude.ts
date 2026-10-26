@@ -111,6 +111,7 @@ export class ClaudeDriver implements Driver {
       },
     }));
     let final = "";
+    let streamMessageId = "";
     try {
       for await (const message of q) {
         if ("session_id" in message && typeof message.session_id === "string")
@@ -127,13 +128,38 @@ export class ClaudeDriver implements Driver {
           ctx.event({ type: "tool_result", payload: message.message });
         else if (message.type === "stream_event") {
           const event = message.event;
+          if (event.type === "message_start")
+            streamMessageId = event.message.id;
+          if (
+            event.type === "content_block_delta" &&
+            event.delta.type === "thinking_delta"
+          )
+            ctx.event({
+              type: "reasoning_summary",
+              payload: {
+                itemId: streamMessageId + ":thinking:" + event.index,
+                text: event.delta.thinking,
+              },
+            });
+          if (
+            event.type === "content_block_start" &&
+            event.content_block.type === "tool_use"
+          )
+            ctx.event({
+              type: "tool_started",
+              payload: {
+                id: event.content_block.id,
+                type: "mcpToolCall",
+                tool: event.content_block.name,
+              },
+            });
           if (
             event.type === "content_block_delta" &&
             event.delta.type === "text_delta"
           )
             ctx.event({
               type: "assistant_delta",
-              payload: { text: event.delta.text },
+              payload: { itemId: streamMessageId, text: event.delta.text },
             });
         } else if (message.type === "result") {
           if (message.subtype === "success")

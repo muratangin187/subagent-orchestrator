@@ -6,6 +6,7 @@ A spacious desktop companion for your existing Agent Workspace server. One persi
 - Searchable sessions, native terminal history, and explicit resume confirmation.
 - Job board, child tasks, cancellation, and answers to agent questions.
 - Markdown conversations, file attachments, image/text previews, paginated PDF viewing, sandboxed HTML rendering, and native downloads/opening.
+- Expandable per-turn work logs: tool input/output, provider-published thinking, elapsed time, and raw Markdown copy.
 - Voice capture and speech playback through the server's ElevenLabs configuration.
 - macOS menus, keyboard shortcuts, encrypted connection storage, and generic task notifications.
 
@@ -66,3 +67,5 @@ The PCM worklet was also exercised inside the packaged Electron runtime with a s
 Launch the packaged app through Finder or macOS LaunchServices (`env -u ELECTRON_RUN_AS_NODE open -a "Agent Workspace"`). Spawning the executable directly from a development host can attribute microphone access to that host instead of this app. For CDP testing, launch through LaunchServices with `--args --remote-debugging-port=9337`, then attach Argent to the running target. Do not change the host application’s entitlements or bypass macOS consent.
 
 On 26 October 2026, the user confirmed live microphone operation in the installed Mac app. The previous host-attributed TCC denial was resolved without modifying T3 Code permissions.
+
+Mouse back/forward buttons, Alt+Left/Right and Cmd+[/] navigate the in-app history. Chat and list scroll positions are restored separately during the current app session; up to 20 loaded transcripts are retained for immediate return. Copy preserves raw Markdown, and the adjacent speech action is labelled “Seslendir”.

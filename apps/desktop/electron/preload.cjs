@@ -1,5 +1,6 @@
 const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("desktop", {
+  copyText: (text) => ipcRenderer.invoke("copy-text", text),
   microphoneAccess: () => ipcRenderer.invoke("microphone-access"),
   connection: () => ipcRenderer.invoke("connection"),
   connectLocal: () => ipcRenderer.invoke("connect-local"),

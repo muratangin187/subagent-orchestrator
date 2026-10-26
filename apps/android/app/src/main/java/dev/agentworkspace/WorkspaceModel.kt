@@ -21,6 +21,7 @@ data class ChatLine(
     val role: String,
     val text: String,
     val attachments: List<ChatAttachment> = emptyList(),
+    val runId: String = "",
 )
 
 fun JSONArray.chatAttachments() =
@@ -39,6 +40,7 @@ data class ScreenState(
     val nativeCursor: String? = null,
     val historyCursor: String? = null,
     val pending: Int = 0,
+    val workGroups: Map<String, WorkActivityRun> = emptyMap(),
     val rejected: List<Pair<String, String>> = emptyList(),
     val loading: Boolean = false,
     val openingAttachment: String? = null,
@@ -226,7 +228,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                     events
                         .objects()
                         .filter { it.optString("type") == "assistant_message" }
-                        .mapNotNull { it.optJSONObject("payload")?.optString("id") }
+                        .map { it.optString("runId") + ":" + (it.optJSONObject("payload")?.optString("id") ?: "") }
                         .toSet()
                 val streams = linkedMapOf<String, StringBuilder>()
                 events
@@ -234,7 +236,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                     .filter { it.optString("type") == "assistant_delta" }
                     .forEach { e ->
                         val p = e.optJSONObject("payload") ?: JSONObject()
-                        val item = p.optString("itemId")
+                        val item = e.optString("runId") + ":" + p.optString("itemId")
                         if (item !in completed)
                             streams.getOrPut(item) { StringBuilder() }.append(p.optString("text"))
                     }
@@ -272,6 +274,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                             }
                         line
                             ?.copy(
+                                runId = e.optString("runId"),
                                 attachments =
                                     payload.optJSONArray("attachments")?.chatAttachments()
                                         ?: emptyList()
@@ -288,9 +291,10 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                             lines =
                                 lines +
                                     streams.map { (key, value) ->
-                                        ChatLine("stream-$key", "assistant", value.toString())
+                                        ChatLine("stream-$key", "assistant", value.toString(), runId = key.substringBefore(":"))
                                     },
                             toolLines = tools,
+                            workGroups = workActivityRuns(events.objects()),
                         )
                     }
                     withContext(Dispatchers.IO) {

@@ -1,3 +1,4 @@
+import { projectMessages } from "./timeline.mjs";
 export type Task = {
   runId?: string;
   deviceId?: string;
@@ -35,8 +36,15 @@ export type Snapshot = {
     state: string;
   }[];
 };
-export type Event = { id: number; type: string; payload: Record<string, any> };
+export type Event = {
+  runId?: string;
+  created?: number;
+  id: number;
+  type: string;
+  payload: Record<string, any>;
+};
 export type Message = {
+  runId?: string;
   id: string;
   role: string;
   text: string;
@@ -52,6 +60,7 @@ export type Native = {
 declare global {
   interface Window {
     desktop: {
+      copyText(text: string): Promise<void>;
       microphoneAccess(): Promise<boolean>;
       connection(): Promise<{ connected: boolean; origin?: string }>;
       connectLocal(): Promise<unknown>;
@@ -88,32 +97,5 @@ export const labels: Record<string, string> = {
   recovery_required: "Kontrol gerekli",
   waiting: "Bekliyor",
 };
-export function toMessages(events: Event[]): Message[] {
-  return events.flatMap((e) => {
-    const p = e.payload;
-    if (e.type === "assistant_message")
-      return [{ id: String(e.id), role: "assistant", text: p.text || "" }];
-    if (["task_created", "message_queued"].includes(e.type)) {
-      const text = p.displayText || p.message || p.task || "";
-      return text.startsWith("Background task event")
-        ? []
-        : [
-            {
-              id: String(e.id),
-              role: "user",
-              text,
-              attachments: p.attachments,
-            },
-          ];
-    }
-    if (e.type === "failed")
-      return [
-        {
-          id: String(e.id),
-          role: "error",
-          text: p.message || p.error || "İş tamamlanamadı.",
-        },
-      ];
-    return [];
-  });
-}
+export const toMessages = (events: Event[]): Message[] =>
+  projectMessages(events);
