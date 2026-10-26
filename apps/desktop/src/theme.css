@@ -216,3 +216,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
   .jobs-modal .tree-job { grid-template-columns: minmax(0, 1fr); }
   .jobs-modal .tree-job > div { grid-column: 1; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
 }
+.inline-visual { margin: 18px 0; min-width: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.visual-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.visual-toolbar button { display: inline-flex; align-items: center; }
+.visual-expanded { display: flex; flex-direction: column; width: min(1100px,96vw); height: 90vh; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.visual-expanded iframe { flex: 1; min-height: 0; }

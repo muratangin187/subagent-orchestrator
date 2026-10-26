@@ -24,7 +24,7 @@ function route(path, body) {
     throw Error("Geçersiz istek.");
   const u = new URL(path, "https://workspace.invalid");
   const get =
-    /^\/v1\/(state|devices|limits|messages|models|native|native\/messages|voice\/(status|voices|events)|attachments\/[0-9a-f-]{36})$/i;
+    /^\/v1\/(state|devices|limits|messages|models|native|native\/messages|voice\/(status|voices|events)|(?:attachments|visuals)\/[0-9a-f-]{36})$/i;
   const post =
     /^\/v1\/(assistant\/messages|sessions\/messages|tasks\/[0-9a-f-]{36}\/messages|task\/action|artifacts\/open|messages\/steer|upload|voice\/(transcribe|speech|config))$/i;
   if (

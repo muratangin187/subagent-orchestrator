@@ -421,6 +421,27 @@ export async function startGateway(
         });
         return;
       }
+      if (
+        req.method === "GET" &&
+        /^\/v1\/visuals\/[0-9a-f-]{36}$/.test(url.pathname)
+      ) {
+        const row = controller.store.db
+          .prepare(
+            "SELECT id,task_id,title,html,measurements FROM visual_documents WHERE id=?",
+          )
+          .get(url.pathname.split("/").at(-1)!) as any;
+        if (!row) throw Error("Visualization not found");
+        controller.engine.status(controller.scope, row.task_id);
+        res.end(
+          JSON.stringify({
+            id: row.id,
+            title: row.title,
+            html: row.html,
+            measurements: JSON.parse(row.measurements),
+          }),
+        );
+        return;
+      }
       if (req.method === "POST" && url.pathname === "/v1/artifacts/open") {
         const input = z
           .object({

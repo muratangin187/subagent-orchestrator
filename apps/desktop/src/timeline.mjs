@@ -49,7 +49,9 @@ export function projectMessages(events) {
   for (const e of events) {
     const p = e.payload || {},
       base = { id: String(e.id), runId: e.runId, created: e.created };
-    if (e.type === "provider_handoff") {
+    if (e.type === "html_render") {
+      messages.push({...base, role:"assistant", text:p.title, visual:p});
+    } else if (e.type === "provider_handoff") {
       messages.push({
         ...base,
         role: "system",

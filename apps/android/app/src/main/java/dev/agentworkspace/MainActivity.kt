@@ -373,7 +373,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                 )
             },
             bottomBar = {
-                Column {
+                Column(Modifier.navigationBarsPadding()) {
                     if (tab != "sessions") {
                         if (s.attached.isNotEmpty())
                             androidx.compose.foundation.lazy.LazyRow(
@@ -614,7 +614,11 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                             .fillMaxWidth(if (line.role == "user") 0.9f else 0.96f),
                                 ) {
                                     Column(Modifier.padding(horizontal = if (line.role == "user") 16.dp else 0.dp, vertical = 12.dp)) {
-                                        MarkdownMessage(line.text) { path -> model.openFileLink(path, (current ?: model.nativeSelection)?.optString("deviceId")?.takeIf { it.isNotBlank() } ?: s.snapshot.optString("localDeviceId")) }
+                                        if (line.visual != null) {
+                                            InlineVisual(model, line.visual)
+                                        } else {
+                                            MarkdownMessage(line.text) { path -> model.openFileLink(path, (current ?: model.nativeSelection)?.optString("deviceId")?.takeIf { it.isNotBlank() } ?: s.snapshot.optString("localDeviceId")) }
+                                        }
                                         line.attachments.forEach { attachment ->
                                             Spacer(Modifier.height(10.dp))
                                             AttachmentCard(

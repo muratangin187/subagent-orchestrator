@@ -294,13 +294,14 @@ Ayrıntılar: [güvenlik politikası](SECURITY.md) · [izinler ve veri yaşam d�
 
 ```sh
 npm ci
+npx playwright install chromium
 npm run format:check
 npm run check
 npm test
 npm run build
 ```
 
-**34 otomatik test:** görev yaşam döngüsü, iç içe delegasyon, izinler, kota bildirimleri, süreç çökmesi, kalıcı kayıtlar, MCP bağlantısı ve worktree davranışı. Normal testler model hesabı veya API anahtarı istemez.
+**Otomatik testler:** görev yaşam döngüsü, iç içe delegasyon, izinler, kota bildirimleri, süreç çökmesi, kalıcı kayıtlar, MCP bağlantısı ve worktree davranışı. Normal testler model hesabı veya API anahtarı istemez.
 
 <details>
 <summary><strong>Gerçek sağlayıcı testleri</strong></summary>
@@ -425,3 +426,10 @@ push adımlarını kapsar. Aktif işleri izinsiz kesmez. İsterseniz “yalnızc
 başka bir becerinin üzerine yazmaz; iki istemci aynı repo dosyasına bağlanır.
 Cihaza özel yolları isteğe bağlı `~/.config/agent-workspace/maintenance.json` içinde,
 repo dışında tutun. Parola ve token koymayın. Beceri listesi için yeni oturum açın.
+
+### Interactive visuals
+
+Ask for a simulation, diagram or interactive chart and the agent can preview it,
+then publish it directly in desktop and Android chat. Both clients offer an expanded
+view and use your theme. HTML runs without host tools, network or local-file access.
+See [setup, examples and boundaries](docs/inline-visuals.md).

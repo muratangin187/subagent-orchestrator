@@ -46,7 +46,13 @@ Unix/macOS/Linux supported; use WSL2 on Windows.`);
     await (await import("./devices/worker.js")).worker();
     return;
   }
-  if (command === "workspace-proxy") { const server=await (await import("./workspace/proxy.js")).startProxy(values.target!,Number(values.port??8787)); process.on("SIGTERM",()=>server.close(()=>process.exit(0))); return; }
+  if (command === "workspace-proxy") {
+    const server = await (
+      await import("./workspace/proxy.js")
+    ).startProxy(values.target!, Number(values.port ?? 8787));
+    process.on("SIGTERM", () => server.close(() => process.exit(0)));
+    return;
+  }
   if (command === "doctor") {
     const exec = promisify(execFile);
     const providers = await Promise.all(

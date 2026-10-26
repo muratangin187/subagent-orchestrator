@@ -1,9 +1,16 @@
+import { VISUAL_INSTRUCTIONS } from "./workspace/visuals.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { schemas, type Tool } from "./schema.js";
 import { ensureDaemon, rpc } from "./transport.js";
 import { errorText, type Scope } from "./types.js";
 const descriptions: Record<Tool, string> = {
+  html_preview:
+    "Preview a self-contained HTML visualization before publishing in chat. Returns mobile and desktop screenshots, JS errors, overflow and previewId. Inline CSS/JS only; network, local files and host tools are blocked. Use responsive SVG/Canvas and accessible buttons. " +
+    VISUAL_INSTRUCTIONS,
+  html_render:
+    "Publish previewed HTML directly inside this conversation on desktop and mobile. Pass exactly the previewed HTML, previewId, short title and stable clientRequestId. Creates a persistent interactive chat item, not an external link. " +
+    VISUAL_INSTRUCTIONS,
   delegate_task:
     "Create a durable child session on Claude Code or Codex. Use a stable clientRequestId on retries. async returns immediately; wait times out without cancellation. Supply a self-contained brief; parent history is not copied.",
   send_to_subagent:
@@ -39,13 +46,27 @@ export async function startMcp(home: string, scope: Scope) {
       { description: descriptions[name], inputSchema: schemas[name].shape },
       async (args: unknown) => {
         try {
-          const result = await rpc(home, "tool", {
+          const result: any = await rpc(home, "tool", {
             scope,
             tool: name,
             input: args,
           });
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result) }],
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  name === "html_preview"
+                    ? { ...result, screenshots: undefined }
+                    : result,
+                ),
+              },
+              ...(result.screenshots || []).map((shot: any) => ({
+                type: "image" as const,
+                mimeType: "image/png" as const,
+                data: shot.data,
+              })),
+            ],
           };
         } catch (e) {
           return {

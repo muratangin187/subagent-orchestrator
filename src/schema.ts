@@ -52,6 +52,15 @@ export const delegateSchema = z
   })
   .strict();
 export const schemas = {
+  html_preview: z.object({ html: z.string().min(1).max(512_000) }).strict(),
+  html_render: z
+    .object({
+      html: z.string().min(1).max(512_000),
+      title: z.string().trim().min(1).max(160),
+      previewId: z.string().uuid(),
+      clientRequestId: key,
+    })
+    .strict(),
   delegate_task: delegateSchema,
   send_to_subagent: z
     .object({

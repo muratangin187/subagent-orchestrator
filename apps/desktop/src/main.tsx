@@ -1,3 +1,4 @@
+import { InlineVisual } from "./InlineVisual";
 import { UsageLimits } from "./UsageLimits";
 import { taskTree } from "./task-tree.mjs";
 import { ModelPicker, type Selection } from "./ModelPicker";
@@ -1127,7 +1128,7 @@ function App() {
                         {groupedWork.before.get(m.id)?.map((group: any) => (
                           <WorkGroup key={group.id} run={group} />
                         ))}
-                        <article className={"message " + m.role}>
+                        {m.visual ? <InlineVisual visual={m.visual} /> : <article className={"message " + m.role}>
                           <div className="message-body">
                             <Markdown
                               urlTransform={(url) =>
@@ -1233,7 +1234,7 @@ function App() {
                               {time(m.created)}
                             </time>
                           )}
-                        </article>
+                        </article>}
                       </React.Fragment>
                     ))}
                   </>

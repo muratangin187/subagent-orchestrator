@@ -136,16 +136,76 @@ test("tools stay between messages and late results update their original group",
 test("live trailing group and streamed message keep their positions after completion", async () => {
   const { workSlots, projectMessages } = await import("../src/timeline.mjs");
   const events = [
-    {id:1,type:"run_started",runId:"r",created:1,payload:{}},
-    {id:2,type:"assistant_delta",runId:"r",created:2,payload:{itemId:"m",text:"Hello"}},
-    {id:3,type:"tool_started",runId:"r",created:3,payload:{},activity:[{id:"a",state:"running"}]}
+    { id: 1, type: "run_started", runId: "r", created: 1, payload: {} },
+    {
+      id: 2,
+      type: "assistant_delta",
+      runId: "r",
+      created: 2,
+      payload: { itemId: "m", text: "Hello" },
+    },
+    {
+      id: 3,
+      type: "tool_started",
+      runId: "r",
+      created: 3,
+      payload: {},
+      activity: [{ id: "a", state: "running" }],
+    },
   ];
-  assert.equal(workSlots(events,projectMessages(events)).tail.length,1);
-  events.push({id:4,type:"assistant_message",runId:"r",created:4,payload:{id:"m",text:"Hello"}});
-  assert.equal(workSlots(events,projectMessages(events)).tail.length,1);
+  assert.equal(workSlots(events, projectMessages(events)).tail.length, 1);
+  events.push({
+    id: 4,
+    type: "assistant_message",
+    runId: "r",
+    created: 4,
+    payload: { id: "m", text: "Hello" },
+  });
+  assert.equal(workSlots(events, projectMessages(events)).tail.length, 1);
 });
 test("message timestamps retain event time and never invent a missing timestamp", async () => {
- const { projectMessages } = await import('../src/timeline.mjs');
- const rows=projectMessages([{id:1,type:'message_queued',created:1700000000000,payload:{message:'Hello'}},{id:2,type:'assistant_message',payload:{text:'Reply'}}]);
- assert.equal(rows[0].created,1700000000000); assert.equal(rows[1].created,undefined);
+  const { projectMessages } = await import("../src/timeline.mjs");
+  const rows = projectMessages([
+    {
+      id: 1,
+      type: "message_queued",
+      created: 1700000000000,
+      payload: { message: "Hello" },
+    },
+    { id: 2, type: "assistant_message", payload: { text: "Reply" } },
+  ]);
+  assert.equal(rows[0].created, 1700000000000);
+  assert.equal(rows[1].created, undefined);
+});
+
+test("inline visual remains between commentary and final response", async () => {
+  const { projectMessages } = await import("../src/timeline.mjs");
+  const messages = projectMessages([
+    {
+      id: 1,
+      runId: "a",
+      created: 1,
+      type: "assistant_message",
+      payload: { id: "first", text: "Preparing" },
+    },
+    {
+      id: 2,
+      runId: "a",
+      created: 2,
+      type: "html_render",
+      payload: { id: "visual", title: "Solar system", measurements: [] },
+    },
+    {
+      id: 3,
+      runId: "a",
+      created: 3,
+      type: "assistant_message",
+      payload: { id: "last", text: "Ready" },
+    },
+  ]);
+  assert.deepEqual(
+    messages.map((m) => m.text),
+    ["Preparing", "Solar system", "Ready"],
+  );
+  assert.equal(messages[1].visual.id, "visual");
 });

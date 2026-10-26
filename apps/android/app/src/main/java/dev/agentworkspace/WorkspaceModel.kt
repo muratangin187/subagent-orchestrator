@@ -24,6 +24,7 @@ data class ChatLine(
     val runId: String = "",
     val order: Long = id.toLongOrNull() ?: Long.MAX_VALUE,
     val created: Long = 0,
+    val visual: JSONObject? = null,
 )
 
 fun JSONArray.chatAttachments() =
@@ -168,6 +169,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                 it.optString("role"),
                 it.optString("text"),
                 it.optJSONArray("attachments")?.chatAttachments() ?: emptyList(),
+                created = it.optLong("created"), visual = it.optJSONObject("visual"),
             )
         }
 
@@ -256,6 +258,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                         val type = e.optString("type")
                         val line =
                             when (type) {
+                                "html_render" -> ChatLine(e.optString("id"), "assistant", payload.optString("title"), visual = payload)
                                 "provider_handoff" -> ChatLine(e.optString("id"), "system", "${payload.optJSONObject("previous")?.optString("provider")} → ${payload.optJSONObject("selection")?.optString("provider")} · Sohbet bağlamı yeni oturuma aktarıldı.")
                                 "task_created" ->
                                     ChatLine(e.optString("id"), "user", payload.optString("task"))
@@ -322,7 +325,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                                         put(
                                             JSONObject()
                                                 .put("id", it.id)
-                                                .put("role", it.role)
+                                                .put("role", it.role).put("created", it.created).put("visual", it.visual)
                                                 .put("text", it.text)
                                                 .put(
                                                     "attachments",

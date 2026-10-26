@@ -1,3 +1,8 @@
+import {
+  initVisuals,
+  previewVisual,
+  publishVisual,
+} from "./workspace/visuals.js";
 import { handoffContext } from "./handoff.js";
 import type { ModelSelection } from "./types.js";
 import type { Devices } from "./devices/registry.js";
@@ -48,6 +53,7 @@ export class Engine {
     readonly devices?: Devices,
   ) {
     this.changes.setMaxListeners(0);
+    initVisuals(store);
   }
   recover() {
     this.store.transaction(() => {
@@ -157,6 +163,31 @@ export class Engine {
     this.store.register(scope);
     const args = schemas[tool].parse(input);
     switch (tool) {
+      case "html_preview":
+      case "html_render": {
+        if (!scope.parentTaskId)
+          throw new OrchestratorError(
+            "invalid_scope",
+            "HTML tools require a bound Workspace conversation",
+          );
+        const task = this.store.task(scope.parentTaskId);
+        if (tool === "html_preview")
+          return previewVisual(
+            this.store,
+            task,
+            schemas.html_preview.parse(args).html,
+          );
+        const a = schemas.html_render.parse(args);
+        const result = this.store.receipt(
+          scope.id,
+          tool,
+          a.clientRequestId,
+          a,
+          () => publishVisual(this.store, task, a),
+        );
+        this.touch(task);
+        return result;
+      }
       case "delegate_task": {
         const a = schemas.delegate_task.parse(args);
         if (scope.parentTaskId) {
@@ -820,24 +851,23 @@ export class Engine {
         const result = await driver.run({
           task,
           run,
-          delegation:
-            this.workspaceRoot && task.depth < this.maxDepth
-              ? {
-                  command: process.execPath,
-                  args: [
-                    fileURLToPath(new URL("../dist/cli.js", import.meta.url)),
-                    "mcp",
-                    "--home",
-                    this.workspaceRoot,
-                    "--cwd",
-                    task.cwd,
-                    "--parent",
-                    `child:${task.id}`,
-                    "--task",
-                    task.id,
-                  ],
-                }
-              : undefined,
+          delegation: this.workspaceRoot
+            ? {
+                command: process.execPath,
+                args: [
+                  fileURLToPath(new URL("../dist/cli.js", import.meta.url)),
+                  "mcp",
+                  "--home",
+                  this.workspaceRoot,
+                  "--cwd",
+                  task.cwd,
+                  "--parent",
+                  `child:${task.id}`,
+                  "--task",
+                  task.id,
+                ],
+              }
+            : undefined,
           session: (id) => {
             const t = this.store.task(task.id);
             t.sessionId = id;

@@ -1,0 +1,12 @@
+<style>
+main{padding:18px;max-width:728px;margin:auto}h2{margin:0 0 8px}p{color:var(--muted);line-height:1.5}svg{width:100%;display:block}button,select,input{accent-color:var(--accent)}button,select{color:var(--foreground);background:var(--background);border:1px solid var(--border);border-radius:6px;padding:8px}nav{display:flex;gap:8px;flex-wrap:wrap}label{display:block;margin:16px 0}input{width:100%}output{font-variant-numeric:tabular-nums}
+</style>
+<main><h2>Güneş çevresinde bir tur</h2><p>Bir gezegen seç, zamanı ilerlet. Yörüngeler dairesel ve boyutlar temsili; uzaklıklar ölçekli değil.</p>
+<nav><select aria-label="Gezegen"><option value="earth">Dünya</option><option value="mars">Mars</option><option value="venus">Venüs</option></select><button id="play">Oynat</button><button id="reset">Başa dön</button></nav>
+<svg viewBox="0 0 600 320" role="img" aria-label="Güneş ve seçili gezegenin yörüngesi"><ellipse cx="300" cy="160" rx="230" ry="120" fill="none" stroke="var(--border)"/><circle cx="300" cy="160" r="23" fill="#f2b93c"/><text x="300" y="200" text-anchor="middle" fill="var(--foreground)">Güneş</text><g id="planet"><circle r="12" fill="#6aaef5"/><text y="-22" text-anchor="middle" fill="var(--foreground)" id="name">Dünya</text></g></svg>
+<label>Geçen gün: <output id="day">0</output><input aria-label="Geçen gün" type="range" min="0" max="730" value="0"></label><p id="detail" aria-live="polite"></p></main>
+<script>
+const periods={earth:[365.25,'Dünya'],mars:[687,'Mars'],venus:[224.7,'Venüs']};const select=document.querySelector('select'),range=document.querySelector('input'),play=document.querySelector('#play');let timer;
+function draw(){const [period,name]=periods[select.value],d=Number(range.value),a=d/period*Math.PI*2;document.querySelector('#planet').setAttribute('transform',`translate(${300+230*Math.cos(a)},${160+120*Math.sin(a)})`);document.querySelector('#name').textContent=name;document.querySelector('#day').textContent=d;document.querySelector('#detail').textContent=`${name}: yaklaşık ${period} Dünya gününde bir tur. Tamamlanan tur: ${(d/period).toFixed(2)}`}
+function stop(){clearInterval(timer);timer=undefined;play.textContent='Oynat'}play.onclick=()=>{if(timer)return stop();play.textContent='Duraklat';timer=setInterval(()=>{range.value=(Number(range.value)+1)%731;draw()},80)};document.querySelector('#reset').onclick=()=>{stop();range.value=0;draw()};select.onchange=draw;range.oninput=draw;document.addEventListener('visibilitychange',()=>{if(document.hidden)stop()});draw();
+</script>

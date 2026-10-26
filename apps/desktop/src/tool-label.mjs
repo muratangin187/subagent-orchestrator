@@ -1,4 +1,6 @@
 const labels = {
+  html_preview: "Görseli önizle",
+  html_render: "Görseli sohbette göster",
   cancel_task: "Görevi durdur",
   send_to_subagent: "Alt ajana mesaj ilet",
   delegate_task: "Yeni görev başlat",

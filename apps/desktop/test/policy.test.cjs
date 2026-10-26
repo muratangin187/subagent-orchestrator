@@ -72,8 +72,27 @@ test("microphone checks accept canonical and slash origins but deny other frames
 });
 
 test("file downloads, limits and explicit steering are allowed through scoped IPC", () => {
- assert.equal(route('/v1/artifacts/open', {path:'/workspace/app.apk'}), '/v1/artifacts/open');
- assert.equal(route('/v1/messages/steer', {}), '/v1/messages/steer');
- assert.equal(route('/v1/limits?deviceId=xps'), '/v1/limits?deviceId=xps');
- assert.equal(route('/v1/attachments/11111111-1111-1111-1111-111111111111?offset=4194304'), '/v1/attachments/11111111-1111-1111-1111-111111111111?offset=4194304');
+  assert.equal(
+    route("/v1/artifacts/open", { path: "/workspace/app.apk" }),
+    "/v1/artifacts/open",
+  );
+  assert.equal(route("/v1/messages/steer", {}), "/v1/messages/steer");
+  assert.equal(route("/v1/limits?deviceId=xps"), "/v1/limits?deviceId=xps");
+  assert.equal(
+    route(
+      "/v1/attachments/11111111-1111-1111-1111-111111111111?offset=4194304",
+    ),
+    "/v1/attachments/11111111-1111-1111-1111-111111111111?offset=4194304",
+  );
+});
+
+test("visual retrieval is read-only and requires a bounded identifier", () => {
+  assert.equal(
+    route("/v1/visuals/11111111-1111-4111-8111-111111111111"),
+    "/v1/visuals/11111111-1111-4111-8111-111111111111",
+  );
+  assert.throws(() => route("/v1/visuals/../../secret"));
+  assert.throws(() =>
+    route("/v1/visuals/11111111-1111-4111-8111-111111111111", {}),
+  );
 });

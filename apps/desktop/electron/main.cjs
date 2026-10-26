@@ -20,6 +20,7 @@ const { pathToFileURL } = require("node:url");
 const policy = require("./policy.cjs");
 app.setName("Agent Workspace");
 protocol.registerSchemesAsPrivileged([
+  { scheme: "workspace-visual", privileges: { standard: true, secure: true } },
   {
     scheme: "workspace",
     privileges: { standard: true, secure: true, supportFetchAPI: true },
@@ -133,7 +134,11 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (e) => e.preventDefault());
   win.webContents.on("will-frame-navigate", (e) => {
-    if (e.url !== "about:srcdoc") e.preventDefault();
+    if (
+      e.url !== "about:srcdoc" &&
+      !/^workspace-visual:\/\/page\/[0-9a-f-]{36}$/.test(e.url)
+    )
+      e.preventDefault();
   });
   win.loadURL("workspace://app/index.html");
   win.on("closed", () => {
@@ -167,6 +172,27 @@ else {
       if (u.host !== "app" || !target.startsWith(base + path.sep))
         return new Response("", { status: 403 });
       return net.fetch(pathToFileURL(target).href);
+    });
+    protocol.handle("workspace-visual", async (req) => {
+      const u = new URL(req.url);
+      if (u.host !== "page" || !/^\/[0-9a-f-]{36}$/.test(u.pathname))
+        return new Response("", { status: 403 });
+      try {
+        await connectionReady;
+        const visual = await request("/v1/visuals" + u.pathname);
+        return new Response(visual.html, {
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "no-store",
+            "Content-Security-Policy":
+              "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'",
+          },
+        });
+      } catch {
+        return new Response("Görsel yüklenemedi. Yeniden açmayı dene.", {
+          status: 503,
+        });
+      }
     });
     session.defaultSession.setPermissionCheckHandler(
       (wc, permission, origin, details) =>

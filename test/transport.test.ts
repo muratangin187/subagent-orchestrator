@@ -64,7 +64,9 @@ test("real MCP SDK handshake and bridge disconnect preserve the independent daem
   try {
     await client.connect(transport);
     const list = await client.listTools();
-    assert.equal(list.tools.length, 10);
+    assert.equal(list.tools.length, 12);
+    assert.ok(list.tools.some((t) => t.name === "html_preview"));
+    assert.ok(list.tools.some((t) => t.name === "html_render"));
     const result = await client.callTool({
       name: "orchestrator_capabilities",
       arguments: {},

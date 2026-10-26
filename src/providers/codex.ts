@@ -1,3 +1,4 @@
+import { VISUAL_INSTRUCTIONS } from "../workspace/visuals.js";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -196,11 +197,12 @@ export class CodexDriver implements Driver {
             : {}),
         },
         developerInstructions:
-          ctx.task.instructions ??
-          "You are a delegated agent. Work only on the supplied brief. Report uncertainties and results honestly. " +
-            (ctx.delegation
-              ? "You can delegate subtasks using standalone_children MCP tools. That server binds new tasks to you automatically. Use wait_for_task to receive results; relay relevant context changes with send_to_subagent. Use only this MCP for delegation, not native agent tools or shell-spawned agents. Wait for your children before publishing a combined result."
-              : "Delegation depth limit reached. Do not spawn further agents."),
+          (ctx.task.instructions ??
+            "You are a delegated agent. Work only on the supplied brief. Report uncertainties and results honestly. " +
+              (ctx.delegation
+                ? "You can delegate subtasks using standalone_children MCP tools. That server binds new tasks to you automatically. Use wait_for_task to receive results; relay relevant context changes with send_to_subagent. Use only this MCP for delegation, not native agent tools or shell-spawned agents. Wait for your children before publishing a combined result."
+                : "Delegation depth limit reached. Do not spawn further agents.")) +
+          (ctx.delegation ? "\n" + VISUAL_INSTRUCTIONS : ""),
       };
       const response = await rpc.request(
         ctx.task.sessionId ? "thread/resume" : "thread/start",

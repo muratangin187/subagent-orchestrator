@@ -47,6 +47,7 @@ export type Event = {
   payload: Record<string, any>;
 };
 export type Message = {
+  visual?: { id: string; title: string; measurements: {width:number;height:number}[] };
   created?: number;
   runId?: string;
   id: string;

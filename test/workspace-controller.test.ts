@@ -569,3 +569,39 @@ test("local chat artifacts require auth and produce downloadable immutable snaps
     await s.close();
   }
 });
+
+test("visual documents require authentication and task ownership", async () => {
+  const s = setup();
+  const g = await startGateway(s.c, s.home, 0);
+  try {
+    const own = (await s.engine.call(s.c.scope, "delegate_task", {
+      task: "visual fixture",
+      clientRequestId: "visual-own",
+    })) as any;
+    const otherScope = { ...s.c.scope, id: "another-owner" };
+    const other = (await s.engine.call(otherScope, "delegate_task", {
+      task: "private fixture",
+      clientRequestId: "visual-other",
+    })) as any;
+    const id = "11111111-1111-4111-8111-111111111111",
+      foreign = "22222222-2222-4222-8222-222222222222";
+    for (const [visualId, taskId] of [
+      [id, own.taskId],
+      [foreign, other.taskId],
+    ])
+      s.store.db
+        .prepare("INSERT INTO visual_documents VALUES(?,?,?,?,?)")
+        .run(visualId, taskId, "Fixture", "<p>Safe</p>", "[]");
+    const base = `http://127.0.0.1:${(g.server.address() as any).port}/v1/visuals/`;
+    const headers = {
+      Authorization:
+        "Bearer " + readFileSync(join(s.home, "device-secret"), "utf8").trim(),
+    };
+    assert.equal((await fetch(base + id)).status, 401);
+    assert.equal((await fetch(base + id, { headers })).status, 200);
+    assert.notEqual((await fetch(base + foreign, { headers })).status, 200);
+  } finally {
+    await g.close();
+    await s.close();
+  }
+});

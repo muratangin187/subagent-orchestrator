@@ -1,3 +1,4 @@
+import { VISUAL_INSTRUCTIONS } from "../workspace/visuals.js";
 import { query, type Query } from "@anthropic-ai/claude-agent-sdk";
 import { realpath } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
@@ -73,11 +74,12 @@ export class ClaudeDriver implements Driver {
           ? { standalone_children: { type: "stdio", ...ctx.delegation } }
           : {},
         systemPrompt:
-          ctx.task.instructions ??
-          "You are a delegated agent. " +
-            (ctx.delegation
-              ? "You can delegate subtasks using standalone_children MCP tools. The server automatically binds children to your task. Wait for child results before reporting a combined outcome. Use only this MCP for delegation; never native agent tools or shell-spawned agents."
-              : "Delegation depth limit reached. Do not spawn further agents."),
+          (ctx.task.instructions ??
+            "You are a delegated agent. " +
+              (ctx.delegation
+                ? "You can delegate subtasks using standalone_children MCP tools. The server automatically binds children to your task. Wait for child results before reporting a combined outcome. Use only this MCP for delegation; never native agent tools or shell-spawned agents."
+                : "Delegation depth limit reached. Do not spawn further agents.")) +
+          (ctx.delegation ? "\n" + VISUAL_INSTRUCTIONS : ""),
         tools,
         disallowedTools: ["Agent", "Task", "Skill", "EnterWorktree"],
         permissionMode: "default",
