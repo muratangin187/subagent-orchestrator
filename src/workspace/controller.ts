@@ -243,6 +243,11 @@ export class WorkspaceController {
             this.set(`input:${input.id}`, id!);
             if (input.kind === "assistant") this.set("assistant", id!);
           } else {
+            if (
+              !input.id.startsWith("event:") &&
+              !this.engine.reopenConversation(this.scope, id)
+            )
+              continue;
             await this.engine.call(this.scope, "send_to_subagent", {
               taskId: id,
               message: input.body,

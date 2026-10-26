@@ -626,6 +626,24 @@ export class Engine {
         });
       }
   }
+  // Only an explicit Workspace user message may reopen a stopped conversation.
+  // Keep cancelled runs/children immutable and wait for the old driver to exit.
+  reopenConversation(scope: Scope, taskId: string): boolean {
+    this.owned(scope, taskId);
+    const task = this.store.task(taskId);
+    if (!task.cancelled) return true;
+    if (!task.conversationKind || task.parentTaskId)
+      throw new OrchestratorError(
+        "cancelled",
+        "Cancelled child tasks cannot be resumed",
+      );
+    if (this.active.has(taskId) || this.processing.has(taskId)) return false;
+    task.cancelled = false;
+    delete task.question;
+    this.touch(task);
+    this.store.event(task, "conversation_reopened", {});
+    return true;
+  }
   private async processCommand(cmd: {
     id: string;
     taskId: string;

@@ -445,3 +445,52 @@ test("recent chat starts at the tail and older pages preserve chronological orde
     await s.close();
   }
 });
+
+test("explicit user message reopens cancelled assistant without reviving children or old runs", async () => {
+  const s = setup();
+  try {
+    s.c.submit({
+      id: "start",
+      target: "assistant",
+      kind: "assistant",
+      provider: "codex",
+      body: "work",
+    });
+    await until(() => !!s.drivers[0]?.context);
+    const root = s.c.get("assistant")!;
+    const oldRun = s.store.task(root).runId;
+    const child: any = await s.engine.call(
+      { ...s.c.scope, id: `child:${root}`, parentTaskId: root },
+      "delegate_task",
+      { task: "child" },
+    );
+    await until(() => !!s.drivers[1]?.context);
+    await s.engine.call(s.c.scope, "cancel_task", {
+      taskId: root,
+      clientRequestId: "cancel",
+    });
+    await tick();
+    await s.c.pump();
+    assert.equal(s.store.task(root).cancelled, true);
+    assert.equal(s.drivers.length, 2);
+    s.c.submit({
+      id: "new-message",
+      target: "assistant",
+      kind: "assistant",
+      provider: "codex",
+      body: "new topic",
+    });
+    await s.c.pump();
+    await until(() => !!s.drivers[2]?.context);
+    assert.equal(s.c.get("assistant"), root);
+    assert.equal(s.drivers[2]!.context.task.sessionId, "native-session");
+    assert.equal(s.drivers[2]!.context.run.prompt, "new topic");
+    assert.equal(s.store.run(oldRun).status, "cancelled");
+    assert.equal(s.store.task(child.taskId).cancelled, true);
+    assert.equal(s.store.task(root).cancelled, false);
+    s.drivers[2]!.resolve("Hello again");
+    await tick();
+  } finally {
+    await s.close();
+  }
+});
