@@ -26,6 +26,7 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
     implementation("io.coil-kt.coil3:coil-compose:3.3.0")
     implementation("androidx.webkit:webkit:1.14.0")
     implementation("io.noties.markwon:core:4.6.2")

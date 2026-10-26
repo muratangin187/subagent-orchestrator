@@ -327,14 +327,20 @@ else {
       if (error) throw Error("Dosya açılamadı: " + error);
     });
     const notified = new Set();
-    handle("notify", (id) => {
+    handle("notify", async (id) => {
       if (typeof id !== "string" || notified.has(id) || win?.isFocused())
         return;
       notified.add(id);
       if (notified.size > 500) notified.delete(notified.values().next().value);
+      const taskId = id.split(":")[0];
+      if (!/^[0-9a-f-]{36}$/i.test(taskId)) return;
+      const preview = await request("/v1/notifications?taskId=" + taskId).catch(
+        () => null,
+      );
+      if (win?.isFocused()) return;
       const n = new Notification({
-        title: "Agent Workspace",
-        body: "Bir iş güncellendi. Ayrıntıları görmek için aç.",
+        title: preview?.title || "Agent Workspace",
+        body: preview?.body || "Asistanında yeni bir güncelleme var.",
       });
       n.on("click", () => {
         win?.show();

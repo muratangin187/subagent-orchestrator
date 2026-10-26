@@ -1,3 +1,4 @@
+import { notificationPreview } from "./notification-preview.js";
 import {
   readArtifact,
   artifactPath,
@@ -212,6 +213,32 @@ export async function startGateway(
               .nonnegative()
               .parse(url.searchParams.get("after") ?? 0),
           ),
+        );
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/v1/notifications") {
+        const eventId = url.searchParams.get("eventId");
+        const taskId = url.searchParams.get("taskId");
+        if ((!eventId && !taskId) || (eventId && taskId)) {
+          send(400, { error: "Specify eventId or taskId" });
+          return;
+        }
+        const preview = notificationPreview(
+          controller,
+          eventId
+            ? {
+                eventId: z.coerce
+                  .number()
+                  .int()
+                  .positive()
+                  .safe()
+                  .parse(eventId),
+              }
+            : { taskId: z.string().uuid().parse(taskId) },
+        );
+        send(
+          preview ? 200 : 404,
+          preview ?? { error: "Notification not found" },
         );
         return;
       }

@@ -7,19 +7,11 @@ export function pushEnvelope(token: string, eventId: string) {
   return {
     message: {
       token,
-      notification: {
-        title: "Agent Workspace",
-        body: "Asistanında yeni bir güncelleme var.",
-      },
       data: { eventId },
       android: {
         priority: "HIGH",
         ttl: "86400s",
         collapse_key: "workspace-update",
-        notification: {
-          channel_id: "workspace_updates",
-          tag: "workspace-update",
-        },
       },
     },
   };

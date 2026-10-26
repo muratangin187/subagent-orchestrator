@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.work.*
 import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -60,32 +61,65 @@ class WorkspaceMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        if (
-            Build.VERSION.SDK_INT >= 33 &&
-                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
-                    PackageManager.PERMISSION_GRANTED
+        val eventId = message.data["eventId"]?.takeIf { it.matches(Regex("[0-9]{1,16}")) } ?: return
+        WorkspaceNotifications.show(this, eventId)
+        // FCM only wakes the app. Fetch private text directly from the paired coordinator.
+        val work = OneTimeWorkRequestBuilder<NotificationPreviewWorker>()
+            .setInputData(workDataOf("eventId" to eventId))
+            .apply { if (Build.VERSION.SDK_INT >= 31) setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST) }
+            .build()
+        WorkManager.getInstance(this).enqueueUniqueWork(
+            "notification-$eventId", ExistingWorkPolicy.KEEP, work,
         )
-            return
-        val intent =
-            Intent(this, MainActivity::class.java).putExtra("eventId", message.data["eventId"])
-        val pending =
-            PendingIntent.getActivity(
-                this,
-                0,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-        // Do not display arbitrary remote text; our fixed copy keeps lock-screen contents private.
-        val notification =
-            NotificationCompat.Builder(this, WorkspacePush.CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("Agent Workspace")
-                .setContentText("Asistanında yeni bir güncelleme var.")
-                .setContentIntent(pending)
-                .setAutoCancel(true)
-                .setOnlyAlertOnce(true)
-                .build()
-        getSystemService(NotificationManager::class.java)
-            .notify("workspace-update", 1, notification)
+    }
+}
+
+object WorkspaceNotifications {
+    fun show(context: Context, eventId: String, title: String = "Agent Workspace", body: String = "Asistanında yeni bir güncelleme var.") {
+        if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(NotificationChannel(WorkspacePush.CHANNEL, "Asistan güncellemeleri", NotificationManager.IMPORTANCE_DEFAULT))
+        val intent = Intent(context, MainActivity::class.java)
+            .setAction("workspace-notification-$eventId")
+            .putExtra("eventId", eventId)
+        val pending = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val publicVersion = NotificationCompat.Builder(context, WorkspacePush.CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("Agent Workspace")
+            .setContentText("Yeni bir mesajın var.").build()
+        val notification = NotificationCompat.Builder(context, WorkspacePush.CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicVersion)
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .build()
+        manager.notify("workspace-$eventId", 1, notification)
+    }
+}
+
+class NotificationPreviewWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
+    override fun doWork(): Result {
+        val eventId = inputData.getString("eventId") ?: return Result.failure()
+        if (!eventId.matches(Regex("[0-9]{1,16}"))) return Result.failure()
+        val manager = applicationContext.getSystemService(NotificationManager::class.java)
+        // Do not resurrect a notification the user has already opened or dismissed.
+        if (manager.activeNotifications.none { it.tag == "workspace-$eventId" }) return Result.success()
+        val repo = Repository(applicationContext)
+        return try {
+            val preview = repo.request("/v1/notifications?eventId=$eventId")
+            if (manager.activeNotifications.any { it.tag == "workspace-$eventId" }) {
+                WorkspaceNotifications.show(applicationContext, eventId, preview.getString("title"), preview.getString("body"))
+            }
+            Result.success()
+        } catch (_: Exception) {
+            if (runAttemptCount < 2) Result.retry() else Result.failure()
+        } finally {
+            repo.local.close()
+        }
     }
 }
