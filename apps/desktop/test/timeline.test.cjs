@@ -99,3 +99,48 @@ test("work groups merge item patches, preserve output and mark unconfirmed tools
   assert.equal(group.items[0].state, "interrupted");
   assert.equal(group.end, 500);
 });
+test("tools stay between messages and late results update their original group", async () => {
+  const { workSlots, projectMessages } = await import("../src/timeline.mjs");
+  const e = (id, type, payload = {}, activity = []) => ({
+    id,
+    type,
+    payload,
+    activity,
+    runId: "r",
+    created: id * 1000,
+  });
+  const events = [
+    e(1, "run_started"),
+    e(2, "assistant_message", { id: "m1", text: "First" }),
+    e(3, "tool_started", {}, [{ id: "a", state: "running" }]),
+    e(4, "tool_started", {}, [{ id: "b", state: "running" }]),
+    e(5, "assistant_message", { id: "m2", text: "Middle" }),
+    e(6, "tool_started", {}, [{ id: "c", state: "running" }]),
+    e(7, "tool_result", {}, [{ id: "a", state: "completed", output: "late" }]),
+    e(8, "assistant_message", { id: "m3", text: "Last" }),
+    e(9, "completed"),
+  ];
+  const slots = workSlots(events, projectMessages(events));
+  assert.equal(slots.before.has("2"), false);
+  assert.deepEqual(
+    slots.before.get("5")[0].items.map((x) => x.id),
+    ["a", "b"],
+  );
+  assert.equal(slots.before.get("5")[0].items[0].output, "late");
+  assert.deepEqual(
+    slots.before.get("8")[0].items.map((x) => x.id),
+    ["c"],
+  );
+  assert.equal(slots.tail.length, 0);
+});
+test("live trailing group and streamed message keep their positions after completion", async () => {
+  const { workSlots, projectMessages } = await import("../src/timeline.mjs");
+  const events = [
+    {id:1,type:"run_started",runId:"r",created:1,payload:{}},
+    {id:2,type:"assistant_delta",runId:"r",created:2,payload:{itemId:"m",text:"Hello"}},
+    {id:3,type:"tool_started",runId:"r",created:3,payload:{},activity:[{id:"a",state:"running"}]}
+  ];
+  assert.equal(workSlots(events,projectMessages(events)).tail.length,1);
+  events.push({id:4,type:"assistant_message",runId:"r",created:4,payload:{id:"m",text:"Hello"}});
+  assert.equal(workSlots(events,projectMessages(events)).tail.length,1);
+});

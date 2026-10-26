@@ -50,7 +50,11 @@ export function projectMessages(events) {
     const p = e.payload || {},
       base = { id: String(e.id), runId: e.runId };
     if (e.type === "provider_handoff") {
-      messages.push({...base,role:"system",text:`${p.previous?.provider} → ${p.selection?.provider} · Sohbet bağlamı yeni oturuma aktarıldı.`});
+      messages.push({
+        ...base,
+        role: "system",
+        text: `${p.previous?.provider} → ${p.selection?.provider} · Sohbet bağlamı yeni oturuma aktarıldı.`,
+      });
     } else if (e.type === "assistant_message") {
       const text =
         p.text ??
@@ -135,4 +139,91 @@ export function workGroups(events) {
       for (const item of g.items)
         if (item.state === "running") item.state = "interrupted";
   return groups;
+}
+
+// A tool owns its original position even when its result arrives after a message.
+export function workSegments(events) {
+  const runs = workGroups(events),
+    segments = [],
+    owners = new Map();
+  let current;
+  for (const e of events) {
+    const p = e.payload || {};
+    if (
+      [
+        "assistant_message",
+        "assistant_delta",
+        "provider_handoff",
+        "question",
+      ].includes(e.type) ||
+      (["task_created", "message_queued"].includes(e.type) &&
+        !(p.displayText || p.message || p.task || "").startsWith(
+          "Background task event",
+        ))
+    )
+      current = undefined;
+    for (const patch of e.activity || []) {
+      const key = `${e.runId}:${patch.id}`;
+      if (owners.has(key)) continue;
+      if (!current || current.runId !== e.runId) {
+        current = {
+          ...runs[e.runId],
+          id: `work-${e.id}`,
+          order: e.id,
+          start: e.created,
+          items: [],
+        };
+        segments.push(current);
+      }
+      owners.set(key, current);
+      current.items.push(runs[e.runId].items.find((i) => i.id === patch.id));
+    }
+  }
+  for (const g of segments) {
+    // Closed segments retain live tool state until all their tools finish.
+    if (g.items.every((i) => i.state === "completed" || i.state === "failed")) {
+      g.end = Math.max(...g.items.map((i) => i.endedAt || g.start));
+      g.state = "completed";
+    }
+  }
+  for (const run of Object.values(runs))
+    if (!segments.some((g) => g.runId === run.runId)) {
+      const start = events.find(
+        (e) => e.runId === run.runId && e.type === "run_started",
+      );
+      if (start)
+        segments.push({ ...run, id: `work-${start.id}`, order: start.id });
+    }
+  return segments.sort((a, b) => a.order - b.order);
+}
+export function workSlots(events, messages) {
+  const before = new Map(),
+    tail = [];
+  for (const group of workSegments(events)) {
+    const next = messages.find((m) => {
+      const order = m.id.startsWith("stream-")
+        ? events.find(
+            (e) =>
+              e.type === "assistant_delta" &&
+              `stream-${e.runId}:${e.payload?.itemId || ""}` === m.id,
+          )?.id
+        : (() => {
+            const event = events.find((e) => String(e.id) === m.id);
+            const p = event?.payload || {};
+            const first =
+              m.role === "assistant" &&
+              events.find(
+                (e) =>
+                  e.type === "assistant_delta" &&
+                  e.runId === m.runId &&
+                  (e.payload?.itemId || "") === (p.id || p.itemId || ""),
+              );
+            return first ? first.id : Number(m.id);
+          })();
+      return order > group.order;
+    });
+    if (next) before.set(next.id, [...(before.get(next.id) || []), group]);
+    else tail.push(group);
+  }
+  return { before, tail };
 }

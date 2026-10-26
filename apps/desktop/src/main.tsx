@@ -6,7 +6,7 @@ import {
 } from "./attachment-input.mjs";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { WorkGroup } from "./WorkGroup";
-import { workGroups } from "./timeline.mjs";
+import { workSlots } from "./timeline.mjs";
 import { chatStatus } from "./chat-status.mjs";
 import { AttachmentPreview } from "./AttachmentPreview";
 import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
@@ -935,15 +935,7 @@ function App() {
   ).filter((t) =>
     title(t).toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr")),
   );
-  const groupedWork = workGroups(events);
-  const firstAssistant = new Map<string, string>();
-  for (const message of messages)
-    if (
-      message.role === "assistant" &&
-      message.runId &&
-      !firstAssistant.has(message.runId)
-    )
-      firstAssistant.set(message.runId, message.id);
+  const groupedWork = workSlots(events, messages);
   const heading =
     external?.title ||
     (selected === "assistant" ? "Asistan" : task ? title(task) : "Sohbet");
@@ -1370,11 +1362,9 @@ function App() {
                 ) : (
                   messages.map((m) => (
                     <React.Fragment key={m.id}>
-                      {m.runId &&
-                        firstAssistant.get(m.runId) === m.id &&
-                        groupedWork[m.runId] && (
-                          <WorkGroup run={groupedWork[m.runId]} />
-                        )}
+                      {groupedWork.before.get(m.id)?.map((group: any) => (
+                        <WorkGroup key={group.id} run={group} />
+                      ))}
                       <article className={"message " + m.role}>
                         <div className="message-body">
                           <Markdown
@@ -1438,11 +1428,9 @@ function App() {
                   ))
                 )}
                 {!external &&
-                  task?.runId &&
-                  !firstAssistant.has(task.runId) &&
-                  groupedWork[task.runId] && (
-                    <WorkGroup run={groupedWork[task.runId]} />
-                  )}
+                  groupedWork.tail.map((group: any) => (
+                    <WorkGroup key={group.id} run={group} />
+                  ))}
               </div>
               {task?.question && (
                 <form

@@ -659,8 +659,8 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             Text("Daha fazla geçmiş yükle")
                         }
                     }
-                    val visibleLines = s.lines
-                    val firstAssistantByRun = visibleLines.filter { it.role == "assistant" && it.runId.isNotBlank() }.groupBy { it.runId }.mapValues { it.value.first().id }
+                    val visibleLines = s.lines.sortedBy { it.order }
+                    val workBefore = s.workGroups.values.groupBy { group -> visibleLines.firstOrNull { it.order > group.order }?.id }
                     val list = rememberLazyListState()
                     var initiallyPositioned by remember(model.selected) { mutableStateOf(false) }
                     LaunchedEffect(model.selected, visibleLines.size, visibleLines.lastOrNull()?.text) {
@@ -712,7 +712,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                 }
                             }
                         items(visibleLines, key = { it.id }) { line ->
-                            if (firstAssistantByRun[line.runId] == line.id) s.workGroups[line.runId]?.let { WorkActivityGroup(it) }
+                            workBefore[line.id]?.forEach { group -> key(group.id) { WorkActivityGroup(group) } }
                             Row(
                                 Modifier.fillMaxWidth(),
                                 horizontalArrangement =
@@ -748,10 +748,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                 }
                             }
                         }
-                        val currentRun = current?.optString("runId") ?: ""
-                        if (currentRun.isNotBlank() && !firstAssistantByRun.containsKey(currentRun)) item {
-                            s.workGroups[currentRun]?.let { WorkActivityGroup(it) }
-                        }
+                        workBefore[null]?.forEach { group -> item(key = group.id) { WorkActivityGroup(group) } }
                         if (current != null && isActiveJob(current))
                             item {
                                 Row(

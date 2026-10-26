@@ -17,7 +17,7 @@ import org.json.JSONObject
 
 /** Shared presentation comes from the server; this reducer only applies item patches. */
 data class WorkActivityItem(val id: String, val kind: String = "tool", val title: String = "Araç", val state: String = "running", val input: String = "", val output: String = "")
-data class WorkActivityRun(val id: String, val start: Long = 0, val end: Long = 0, val state: String = "running", val items: List<WorkActivityItem> = emptyList())
+data class WorkActivityRun(val id: String, val start: Long = 0, val end: Long = 0, val state: String = "running", val items: List<WorkActivityItem> = emptyList(), val order: Long = 0)
 fun workActivityRuns(events: List<JSONObject>): Map<String, WorkActivityRun> {
     val runs = linkedMapOf<String, WorkActivityRun>()
     events.forEach { event ->
@@ -40,6 +40,53 @@ fun workActivityRuns(events: List<JSONObject>): Map<String, WorkActivityRun> {
         runs[runId] = run
     }
     return runs.mapValues { (_, run) -> if (run.end > 0) run.copy(items = run.items.map { if (it.state == "running") it.copy(state = "interrupted") else it }) else run }
+}
+
+fun workActivitySegments(events: List<JSONObject>): Map<String, WorkActivityRun> {
+    val runs = workActivityRuns(events)
+    val segments = linkedMapOf<String, WorkActivityRun>()
+    val owners = mutableSetOf<String>()
+    val segmentRuns = mutableMapOf<String, String>()
+    val finished = mutableMapOf<String, Long>()
+    val runsWithActivity = mutableSetOf<String>()
+    var current: String? = null
+    var currentRun = ""
+    events.forEach { e ->
+        val type = e.optString("type")
+        val p = e.optJSONObject("payload") ?: JSONObject()
+        if (type in listOf("assistant_message", "assistant_delta", "provider_handoff", "question") ||
+            (type in listOf("task_created", "message_queued") && !p.optString("displayText", p.optString("message", p.optString("task"))).startsWith("Background task event"))) current = null
+        val runId = e.optString("runId")
+        e.optJSONArray("activity")?.objects()?.forEach patchLoop@ { patch ->
+            val itemId = patch.optString("id")
+            runsWithActivity.add(runId)
+            if (patch.optString("state") in listOf("completed", "failed")) finished["$runId:$itemId"] = e.optLong("created")
+            if (owners.add("$runId:$itemId")) {
+                val run = runs[runId] ?: return@patchLoop
+                if (current == null || currentRun != runId) {
+                    current = "work-${e.optLong("id")}"; currentRun = runId
+                    segmentRuns[current!!] = runId
+                    segments[current!!] = run.copy(id = current!!, start = e.optLong("created"), items = emptyList(), order = e.optLong("id"))
+                }
+                val group = segments[current!!]!!
+                segments[current!!] = group.copy(items = group.items + run.items.filter { it.id == itemId })
+            }
+        }
+    }
+    runs.forEach { (runId, run) ->
+        if (runId !in runsWithActivity) {
+            events.find { it.optString("runId") == runId && it.optString("type") == "run_started" }?.let {
+                val id = "work-${it.optLong("id")}"
+                segments[id] = run.copy(id = id, order = it.optLong("id"))
+            }
+        }
+    }
+    return segments.mapValues { (_, group) ->
+        if (group.items.isNotEmpty() && group.items.all { it.state in listOf("completed", "failed") }) {
+            val end = group.items.maxOfOrNull { finished["${segmentRuns[group.id]}:${it.id}"] ?: group.end } ?: group.end
+            group.copy(end = end, state = if (group.items.any { it.state == "failed" }) "failed" else "completed")
+        } else group
+    }.toList().sortedBy { it.second.order }.toMap()
 }
 
 @Composable

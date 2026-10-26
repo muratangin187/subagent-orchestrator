@@ -22,6 +22,7 @@ data class ChatLine(
     val text: String,
     val attachments: List<ChatAttachment> = emptyList(),
     val runId: String = "",
+    val order: Long = id.toLongOrNull() ?: Long.MAX_VALUE,
 )
 
 fun JSONArray.chatAttachments() =
@@ -284,6 +285,10 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                         line
                             ?.copy(
                                 runId = e.optString("runId"),
+                                order = if (type == "assistant_message") events.objects().firstOrNull { delta ->
+                                    val dp = delta.optJSONObject("payload")
+                                    delta.optString("type") == "assistant_delta" && delta.optString("runId") == e.optString("runId") && (dp?.optString("itemId") ?: "") == payload.optString("id", payload.optString("itemId"))
+                                }?.optLong("id") ?: e.optLong("id") else e.optLong("id"),
                                 attachments =
                                     payload.optJSONArray("attachments")?.chatAttachments()
                                         ?: emptyList()
@@ -300,10 +305,10 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                             lines =
                                 lines +
                                     streams.map { (key, value) ->
-                                        ChatLine("stream-$key", "assistant", value.toString(), runId = key.substringBefore(":"))
+                                        ChatLine(events.objects().first { e -> e.optString("type") == "assistant_delta" && e.optString("runId") + ":" + (e.optJSONObject("payload")?.optString("itemId") ?: "") == key }.optString("id"), "assistant", value.toString(), runId = key.substringBefore(":"))
                                     },
                             toolLines = tools,
-                            workGroups = workActivityRuns(events.objects()),
+                            workGroups = workActivitySegments(events.objects()),
                         )
                     }
                     withContext(Dispatchers.IO) {
