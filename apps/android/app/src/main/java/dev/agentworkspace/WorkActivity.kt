@@ -83,13 +83,13 @@ private fun WorkActivityRow(item: WorkActivityItem) {
             Column(Modifier.weight(1f)) {
                 Text(item.title, style = MaterialTheme.typography.bodySmall, color = color)
                 val preview = item.input.ifBlank { item.output }.replace('\n', ' ')
-                if (preview.isNotBlank()) Text(preview, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                if (preview.isNotBlank()) Text(preview, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (item.state == "running") CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp)
             else Icon(if (item.state == "failed") Icons.Default.ErrorOutline else if (item.state == "completed") Icons.Default.Check else Icons.Default.Remove, null, Modifier.size(14.dp), tint = color)
             Icon(if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight, null, Modifier.size(16.dp), tint = color)
         }
-        if (expanded) Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        if (expanded) Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
             Column(Modifier.fillMaxWidth().padding(12.dp)) {
                 if (item.input.isNotBlank()) { Text("GİRDİ", style = MaterialTheme.typography.labelSmall); SelectionContainer { Text(item.input, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }; Spacer(Modifier.height(12.dp)) }
                 if (item.output.isNotBlank()) {

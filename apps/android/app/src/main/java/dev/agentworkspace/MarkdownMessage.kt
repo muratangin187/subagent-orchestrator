@@ -86,6 +86,7 @@ fun MarkdownMessage(markdown: String) {
                 setTextIsSelectable(true)
                 movementMethod = TableAwareMovementMethod.create()
                 includeFontPadding = false
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(ctx, R.font.ibm_plex_sans)
                 setLineSpacing(0f, 1.2f)
                 setPadding(0, 0, 0, 0)
             }

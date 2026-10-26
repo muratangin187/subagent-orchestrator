@@ -68,34 +68,7 @@ class MainActivity : ComponentActivity() {
                 lifecycle.addObserver(observer)
                 onDispose { lifecycle.removeObserver(observer) }
             }
-            val colors =
-                if (isSystemInDarkTheme())
-                    darkColorScheme(
-                        primary = Color(0xff8bd5bb),
-                        primaryContainer = Color(0xff234e40),
-                        onPrimaryContainer = Color(0xffd5f4e6),
-                        secondaryContainer = Color(0xff30473e),
-                        surfaceContainer = Color(0xff1c2923),
-                        surfaceContainerHigh = Color(0xff22352c),
-                        surfaceContainerHighest = Color(0xff2a4035),
-                        secondary = Color(0xffb6ccbf),
-                        surface = Color(0xff111a17),
-                        background = Color(0xff111a17),
-                    )
-                else
-                    lightColorScheme(
-                        primary = Color(0xff176454),
-                        primaryContainer = Color(0xffdcefe4),
-                        onPrimaryContainer = Color(0xff163f31),
-                        secondaryContainer = Color(0xffe2eae4),
-                        surfaceContainer = Color(0xffedf2ee),
-                        surfaceContainerHigh = Color(0xffe6eee8),
-                        surfaceContainerHighest = Color(0xffdce7df),
-                        secondary = Color(0xff52665d),
-                        surface = Color(0xfff7faf7),
-                        background = Color(0xfff7faf7),
-                    )
-            MaterialTheme(colorScheme = colors) {
+            WorkspaceTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
@@ -304,7 +277,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                         sortedJobs.filter { !activeJobsOnly || isActiveJob(it) },
                         key = { it.getString("id") },
                     ) { t ->
-                        ElevatedCard(onClick = { openTask(t) }) {
+                        Card(onClick = { openTask(t) }, colors = CardDefaults.cardColors(containerColor = Color.Transparent)) {
                             Column(Modifier.fillMaxWidth().padding(16.dp)) {
                                 Text(
                                     t.optString("title"),
@@ -443,7 +416,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                 placeholder = { Text("Mesajını yaz…") },
                                 modifier = Modifier.weight(1f),
                                 maxLines = 5,
-                                shape = RoundedCornerShape(24.dp),
+                                shape = RoundedCornerShape(12.dp),
                             )
                             if (tab == "assistant")
                                 IconButton(onClick = { showVoice = true }) {
@@ -643,7 +616,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                         )
                                     },
                                     leadingIcon = { JobIndicator(job.optString("status")) },
-                                    shape = RoundedCornerShape(24.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     colors =
                                         AssistChipDefaults.assistChipColors(
                                             containerColor =
@@ -690,7 +663,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     Surface(
-                                        shape = RoundedCornerShape(24.dp),
+                                        shape = RoundedCornerShape(12.dp),
                                         color = MaterialTheme.colorScheme.primaryContainer,
                                     ) {
                                         Icon(
@@ -722,23 +695,19 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             ) {
                                 Surface(
                                     shape =
-                                        RoundedCornerShape(
-                                            topStart = 20.dp,
-                                            topEnd = 20.dp,
-                                            bottomStart = if (line.role == "user") 20.dp else 4.dp,
-                                            bottomEnd = if (line.role == "user") 4.dp else 20.dp,
-                                        ),
+                                        RoundedCornerShape(12.dp),
                                     color =
                                         if (line.role == "user")
-                                            MaterialTheme.colorScheme.primaryContainer
+                                            MaterialTheme.colorScheme.surfaceContainer
                                         else if (line.role == "error")
                                             MaterialTheme.colorScheme.errorContainer
-                                        else MaterialTheme.colorScheme.surfaceContainer,
+                                        else Color.Transparent,
+                                    contentColor = MaterialTheme.colorScheme.onSurface,
                                     modifier =
                                         Modifier.widthIn(max = 620.dp)
                                             .fillMaxWidth(if (line.role == "user") 0.9f else 0.96f),
                                 ) {
-                                    Column(Modifier.padding(16.dp)) {
+                                    Column(Modifier.padding(horizontal = if (line.role == "user") 16.dp else 0.dp, vertical = 12.dp)) {
                                         MarkdownMessage(line.text)
                                         RawCopyButton(line.text)
                                         line.attachments.forEach { attachment ->
@@ -993,8 +962,8 @@ fun WorkspaceApp(model: WorkspaceModel) {
 
 @Composable
 fun SessionCard(title: String, subtitle: String, onClick: () -> Unit) {
-    OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
+    Surface(onClick = onClick, modifier = Modifier.fillMaxWidth(), color = Color.Transparent) {
+        Column(Modifier.padding(vertical = 12.dp, horizontal = 4.dp)) {
             Text(title, maxLines = 2, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
             Text(
@@ -1091,7 +1060,7 @@ fun AttachmentCard(file: ChatAttachment, loading: Boolean, onClick: () -> Unit) 
         onClick = onClick,
         enabled = !loading,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         colors =
             CardDefaults.outlinedCardColors(
                 containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.65f)
@@ -1099,7 +1068,7 @@ fun AttachmentCard(file: ChatAttachment, loading: Boolean, onClick: () -> Unit) 
     ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(6.dp),
                 color = MaterialTheme.colorScheme.secondaryContainer,
             ) {
                 Icon(

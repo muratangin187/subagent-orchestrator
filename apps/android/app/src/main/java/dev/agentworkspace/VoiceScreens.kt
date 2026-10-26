@@ -62,8 +62,8 @@ fun VoiceScreen(model: VoiceModel, onClose: () -> Unit, onSettings: () -> Unit) 
     ) {
         Surface(
             Modifier.fillMaxSize(),
-            color = Color(0xff111a17),
-            contentColor = Color(0xffe7f3eb),
+            color = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
             Column(
                 Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
@@ -74,7 +74,7 @@ fun VoiceScreen(model: VoiceModel, onClose: () -> Unit, onSettings: () -> Unit) 
                         Text("Asistanın", fontWeight = FontWeight.SemiBold, fontSize = 22.sp)
                         Text(
                             "Aynı sohbet, şimdi sesli",
-                            color = Color(0xffa1b8ac),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp,
                         )
                     }
@@ -103,7 +103,7 @@ fun VoiceScreen(model: VoiceModel, onClose: () -> Unit, onSettings: () -> Unit) 
                             )
                             .border(
                                 2.dp,
-                                if (s.active) Color(0xff74cdb0) else Color(0xff29473b),
+                                if (s.active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
                                 CircleShape,
                             )
                     )
@@ -124,7 +124,7 @@ fun VoiceScreen(model: VoiceModel, onClose: () -> Unit, onSettings: () -> Unit) 
                         "Seni dinliyorum. Durakladığında sözünü alacağım."
                     else if (s.active) "Aynı asistan sohbetinde devam ediyoruz."
                     else "Konuşmayı başlat; işleri birlikte ilerletelim.",
-                    color = Color(0xffa1b8ac),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
@@ -132,7 +132,7 @@ fun VoiceScreen(model: VoiceModel, onClose: () -> Unit, onSettings: () -> Unit) 
                     Spacer(Modifier.height(12.dp))
                     Text(
                         it,
-                        color = Color(0xffffb4ab),
+                        color = MaterialTheme.colorScheme.error,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
                 }
@@ -169,7 +169,7 @@ fun VoiceScreen(model: VoiceModel, onClose: () -> Unit, onSettings: () -> Unit) 
                             modifier = Modifier.size(60.dp),
                             colors =
                                 IconButtonDefaults.filledIconButtonColors(
-                                    containerColor = Color(0xffa9373b)
+                                    containerColor = MaterialTheme.colorScheme.error
                                 ),
                         ) {
                             Icon(Icons.Default.CallEnd, "Görüşmeyi bitir", tint = Color.White)
@@ -177,14 +177,14 @@ fun VoiceScreen(model: VoiceModel, onClose: () -> Unit, onSettings: () -> Unit) 
                     }
                     if (s.phase == "Konuşuyor" || s.phase == "Yanıt hazırlanıyor")
                         TextButton(onClick = model::interrupt) {
-                            Text("Söz al", color = Color(0xff8bd5bb))
+                            Text("Söz al", color = MaterialTheme.colorScheme.primary)
                         }
                 }
                 Spacer(Modifier.height(18.dp))
                 Text(
                     "Ses ve seslendirilecek yanıtlar ElevenLabs ile işlenir.",
                     fontSize = 11.sp,
-                    color = Color(0xff8da398),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }
@@ -204,10 +204,10 @@ private fun VoiceControl(
         modifier = Modifier.size(60.dp),
         colors =
             IconButtonDefaults.filledTonalIconButtonColors(
-                containerColor = if (selected) Color(0xff4d3838) else Color(0xff254538)
+                containerColor = if (selected) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainer
             ),
     ) {
-        Icon(icon, label, tint = Color(0xffd5f4e6))
+        Icon(icon, label, tint = MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -245,6 +245,7 @@ fun SettingsScreen(model: VoiceModel, workspace: WorkspaceModel, onClose: () -> 
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                AppearanceSettings()
                 Text("Bağlantı", style = MaterialTheme.typography.titleLarge)
                 OutlinedCard(Modifier.fillMaxWidth()) {
                     Column(

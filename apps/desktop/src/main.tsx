@@ -1,3 +1,4 @@
+import { AppearanceSettings } from "./AppearanceSettings";
 import { WorkGroup } from "./WorkGroup";
 import { workGroups } from "./timeline.mjs";
 import { chatStatus } from "./chat-status.mjs";
@@ -47,6 +48,7 @@ import {
   type Native,
 } from "./types";
 import "./style.css";
+import "./theme.css";
 function CopyMessage({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
@@ -379,6 +381,23 @@ function App() {
       audio.current?.pause();
     };
   }, []);
+  useEffect(() => {
+    if (!modal && !preview) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+    const focusable = () => Array.from(dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]') || []).filter(el => el.getClientRects().length);
+    focusable()[0]?.focus();
+    const trap = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const nodes = focusable();
+      const first = nodes[0], last = nodes[nodes.length - 1];
+      if (!first) { e.preventDefault(); return; }
+      if (e.shiftKey && (document.activeElement === first || !dialog?.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (document.activeElement === last || !dialog?.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", trap);
+    return () => { document.removeEventListener("keydown", trap); if (previous?.isConnected) previous.focus(); };
+  }, [modal, !!preview]);
   function savePage() {
     const current = route.current;
     const el =
@@ -852,7 +871,7 @@ function App() {
       firstAssistant.set(message.runId, message.id);
   const heading =
     external?.title ||
-    (selected === "assistant" ? "Asistanın" : task ? title(task) : "Sohbet");
+    (selected === "assistant" ? "Asistan" : task ? title(task) : "Sohbet");
   const row = (t: Task) => (
     <button
       className={"task-row " + (selected === t.id ? "selected" : "")}
@@ -878,7 +897,7 @@ function App() {
             <Sparkles size={21} />
           </div>
           <div>
-            Workspace<small>KİŞİSEL ÇALIŞMA ALANIN</small>
+            Workspace
           </div>
         </div>
         <div className="search-box">
@@ -989,16 +1008,14 @@ function App() {
             <div className="hero-mark">
               <Sparkles size={38} />
             </div>
-            <span className="eyebrow">DAHA GENİŞ BİR ÇALIŞMA ALANI</span>
+
             <h1>
-              Her şey bir arada.
-              <br />
-              Kontrol sende.
+              Çalışma alanına bağlan
             </h1>
             <p>
               Telefondaki asistanın, oturumların ve alt ajanların.
               <br />
-              Bu kez, tüm resmi görebileceğin bir ekranda.
+              Devam etmek için bilgisayarını bağla.
             </p>
             <button
               className="primary"
@@ -1021,8 +1038,7 @@ function App() {
           <div className="page">
             <div className="page-title">
               <div>
-                <span className="eyebrow">SEN YÖNET, AJANLAR ÇALIŞSIN</span>
-                <h1>İşlerin nabzı.</h1>
+                <h1>İşler</h1>
                 <p>
                   Devam eden işleri takip et, ihtiyaç duyduklarında yön ver.
                 </p>
@@ -1218,7 +1234,7 @@ function App() {
                     <h2 title={heading}>{heading}</h2>
                     <small>
                       {selected === "assistant"
-                        ? "Düşüncelerini işe dönüştüren kişisel asistanın."
+                        ? "İşleri başlat, gelişmeleri takip et."
                         : external
                           ? "Terminal geçmişi"
                           : task?.provider + " oturumu"}
@@ -1550,7 +1566,7 @@ function App() {
                 {!(selected === "assistant" ? active : children).length && (
                   <div className="inspector-empty">
                     <CheckCircle2 size={25} />
-                    <h4>Her şey sakin.</h4>
+                    <h4>Aktif iş yok.</h4>
                     <p>
                       Yeni bir iş başladığında
                       <br />
@@ -1606,14 +1622,7 @@ function App() {
                     </div>
                   ))}
                 </details>
-                <div className="side-note">
-                  <Command size={17} />
-                  <span>
-                    <strong>Akışını bölme.</strong>
-                    <br />⌘ K ile oturumları bul.
-                    <br />⌘ N ile yenisini başlat.
-                  </span>
-                </div>
+
               </aside>
             )}
           </div>
@@ -1633,6 +1642,7 @@ function App() {
           <section
             role="dialog"
             aria-modal="true"
+            aria-label={modal === "settings" ? "Ayarlar" : modal === "voice" ? "Sesli asistan" : preview ? "Dosya önizleme" : "Çalışma alanı işlemi"}
             className={
               "modal " +
               (modal === "voice"
@@ -1730,8 +1740,8 @@ function App() {
             )}
             {modal === "settings" && (
               <>
-                <span className="eyebrow">SANA GÖRE</span>
-                <h2>Çalışma alanı ayarları</h2>
+                <h2>Ayarlar</h2>
+                <AppearanceSettings />
                 <div className="settings-card">
                   <strong>Bilgisayar bağlantısı</strong>
                   <p>{origin || "Henüz bağlı değil"}</p>

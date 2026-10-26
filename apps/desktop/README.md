@@ -69,3 +69,5 @@ Launch the packaged app through Finder or macOS LaunchServices (`env -u ELECTRON
 On 26 October 2026, the user confirmed live microphone operation in the installed Mac app. The previous host-attributed TCC denial was resolved without modifying T3 Code permissions.
 
 Mouse back/forward buttons, Alt+Left/Right and Cmd+[/] navigate the in-app history. Chat and list scroll positions are restored separately during the current app session; up to 20 loaded transcripts are retained for immediate return. Copy preserves raw Markdown, and the adjacent speech action is labelled “Seslendir”.
+
+Appearance is available under **Ayarlar → Görünüm**: system/light/dark and teal/blue/copper/rose accent colors, saved locally. System mode follows live OS changes. The interface uses bundled, OFL-licensed IBM Plex Sans and semantic color tokens; see [DESIGN.md](../../DESIGN.md). Documents keep their own colors. Ad-hoc macOS upgrades may prompt for Keychain permission again when opening the encrypted connection.

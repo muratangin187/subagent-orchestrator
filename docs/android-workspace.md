@@ -125,3 +125,6 @@ Android debug build and lint pass. The avatar view and settings navigation were
 checked on a physical phone. A real ElevenLabs API check synthesized a short Turkish test sentence and Scribe
 transcribed it correctly. Phone microphone capture and conversational playback need
 a separate live spoken check; API round-trip success does not establish device audio quality.
+
+### Görünüm
+Ayarlar → Görünüm bölümünde Sistem / Açık / Koyu ve Petrol / Mavi / Bakır / Gül vurgu renkleri seçilebilir. Seçim telefonda saklanır ve uygulama yeniden başlatıldığında korunur; cihazlar arasında senkronize edilmez. Sistem modu Android görünümünü izler. IBM Plex Sans uygulamaya gömülüdür; yazı tipi için ağ isteği yapılmaz. Tasarım kararları kökteki DESIGN.md dosyasındadır.
