@@ -192,7 +192,7 @@ function App() {
     (t) => t.id === (selected === "assistant" ? snap.assistantId : selected),
   );
   const active = ordered(
-    snap.tasks.filter((t) => t.id !== snap.assistantId && isActive(t)),
+    snap.tasks.filter((t) => !!t.parentTaskId && isActive(t)),
   );
   const children = ordered(
     snap.tasks.filter((t) => t.parentTaskId === task?.id),
@@ -501,9 +501,10 @@ function App() {
   restoreRoute.current = (r) => visit(r, false);
   function navigate(v: string) {
     if (v === "assistant") choose("assistant");
-    else visit({ ...route.current, view: v });
+    else if (v === "jobs" || v === "sessions") setModal(v);
   }
   function choose(id: string, n?: Native) {
+    setModal("");
     visit({
       view: id === "assistant" ? "assistant" : "chat",
       selected: id,
@@ -513,7 +514,7 @@ function App() {
   commandHandler.current = (cmd) => {
     if (cmd === "back") history.back();
     else if (cmd === "forward") history.forward();
-    else if (cmd === "search") search.current?.focus();
+    else if (cmd === "search") setModal("sessions");
     else if (cmd === "new" || cmd === "settings") setModal(cmd);
     else navigate(cmd);
   };
@@ -959,93 +960,33 @@ function App() {
   );
   return (
     <div className="app">
-      <aside className="sidebar">
-        <div className="traffic-space" />
-        <div className="brand">
-          <div className="brand-mark">
-            <Sparkles size={21} />
-          </div>
-          <div>Workspace</div>
-        </div>
-        <div className="search-box">
-          <Search size={16} />
-          <input
-            ref={search}
-            placeholder="Oturumlarda ara…"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              navigate("sessions");
-            }}
-          />
-          <kbd>⌘ K</kbd>
-        </div>
-        <nav>
-          {[
-            [Sparkles, "Asistan", "assistant"],
-            [Layers, "İşler", "jobs"],
-            [MessageSquare, "Oturumlar", "sessions"],
-          ].map(([Icon, label, id]: any) => (
-            <button
-              key={id}
-              className={view === id ? "current" : ""}
-              onClick={() => navigate(id)}
-            >
-              <Icon size={18} />
-              {label}
-              {id === "jobs" && active.length > 0 && (
-                <span className="count">{active.length}</span>
-              )}
-            </button>
-          ))}
-        </nav>
-        <div className="side-heading">
-          SON OTURUMLAR
-          <button aria-label="Yeni oturum" onClick={() => setModal("new")}>
-            <Plus size={16} />
-          </button>
-        </div>
-        <div className="recent">
-          {filtered.slice(0, 12).map(row)}
-          {!filtered.length && (
-            <p className="quiet">Oturumların burada görünecek.</p>
-          )}
-        </div>
-        <div className="side-bottom">
-          <UsageLimits
-            deviceId={
-              task?.deviceId || external?.deviceId || snap.localDeviceId
-            }
-            connected={connected && !offline}
-          />
-          <button onClick={() => setModal("settings")}>
-            <Settings size={17} />
-            Ayarlar<kbd>⌘ ,</kbd>
-          </button>
-          <div className="connection">
-            <i className={connected && !offline ? "online" : ""} />
-            {connected
-              ? offline
-                ? "Bağlantı kesildi"
-                : "Bilgisayar bağlı"
-              : "Bağlantı bekleniyor"}
-          </div>
-        </div>
-      </aside>
       <main>
         <header>
           <div className="breadcrumb">
-            Çalışma alanı
-            <ChevronRight size={14} />
-            <strong>
-              {view === "jobs"
-                ? "İşler"
-                : view === "sessions"
-                  ? "Oturumlar"
-                  : "Asistan"}
-            </strong>
+            {selected !== "assistant" && (
+              <button onClick={() => choose("assistant")}>
+                <Sparkles size={16} /> Asistana dön
+              </button>
+            )}
           </div>
           <div className="header-actions">
+            <button onClick={() => setModal("jobs")} aria-label="İşler">
+              <Layers size={16} /> İşler{" "}
+              {active.length > 0 && (
+                <span className="count">{active.length}</span>
+              )}
+            </button>
+            <button
+              className="header-voice"
+              onClick={() => {
+                stopVoice(false);
+                setModal("voice");
+                setVoiceState("idle");
+              }}
+            >
+              <Mic size={16} /> Sesli asistan
+            </button>
+
             <span className="today">
               {new Date().toLocaleDateString("tr", {
                 day: "numeric",
@@ -1104,158 +1045,6 @@ function App() {
               Başka bilgisayardan bağlantı dosyası seç
             </button>
             <small>Mevcut Agent Workspace sunucusunu kullanır.</small>
-          </div>
-        ) : view === "jobs" ? (
-          <div className="page">
-            <div className="page-title">
-              <div>
-                <h1>İşler</h1>
-                <p>
-                  Devam eden işleri takip et, ihtiyaç duyduklarında yön ver.
-                </p>
-              </div>
-              <span className="metric">
-                {active.length}
-                <small>aktif iş</small>
-              </span>
-            </div>
-            <div className="task-tree">
-              {taskTree(snap.tasks, snap.assistantId).map(
-                ({ task: t, depth, path, childCount }: any) => (
-                  <button
-                    className={"job-card tree-job " + (depth ? "nested" : "")}
-                    style={{ marginLeft: Math.min(depth, 6) * 24 }}
-                    key={t.id}
-                    onClick={() => choose(t.id)}
-                  >
-                    <small className="tree-path" title={path.join(" → ")}>
-                      {path.join(" → ")}
-                    </small>
-                    <h3>{title(t)}</h3>
-                    <div>
-                      <Badge task={t} />
-                      <span className="quiet">
-                        {t.provider} · {t.deviceId || "yerel"}
-                        {childCount > 0 ? ` · ${childCount} alt görev` : ""}
-                      </span>
-                      <span className="quiet">{date(t.updatedAt)}</span>
-                    </div>
-                  </button>
-                ),
-              )}
-              {!snap.tasks.some((t) => t.id !== snap.assistantId) && (
-                <p>Henüz iş yok.</p>
-              )}
-            </div>
-          </div>
-        ) : view === "sessions" ? (
-          <div className="page">
-            <div className="page-title">
-              <div>
-                <span className="eyebrow">KALDIĞIN YERDEN DEVAM ET</span>
-                <h1>Oturumlar.</h1>
-                <select
-                  aria-label="Oturum cihazı"
-                  value={deviceId}
-                  onChange={(e) => {
-                    setDeviceId(e.target.value);
-                    setNatives([]);
-                    setNativeCursor(null);
-                  }}
-                >
-                  {snap.devices?.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-                <p>Workspace ve terminal konuşmaların, tek bir yerde.</p>
-              </div>
-              <button className="primary" onClick={() => setModal("new")}>
-                <Plus size={16} />
-                Yeni oturum
-              </button>
-            </div>
-            <h3>
-              Workspace oturumları{" "}
-              <span className="quiet">{filtered.length}</span>
-            </h3>
-            <div className="session-list">
-              {filtered.map((t) => (
-                <button key={t.id} onClick={() => choose(t.id)}>
-                  <span className="session-icon">
-                    <MessageSquare size={20} />
-                  </span>
-                  <span className="grow">
-                    <strong>{title(t)}</strong>
-                    <small>
-                      {t.deviceId || "local"} · {t.provider} ·{" "}
-                      {date(t.updatedAt)} {time(t.updatedAt)}
-                    </small>
-                  </span>
-                  <Badge task={t} />
-                  <ChevronRight size={16} />
-                </button>
-              ))}
-            </div>
-            <div className="section-heading">
-              <h3>
-                <Terminal size={17} />
-                Terminal ve editör oturumları
-              </h3>
-              <div className="inline">
-                <select
-                  aria-label="Terminal sağlayıcısı"
-                  value={provider}
-                  onChange={(e) => {
-                    setProvider(e.target.value);
-                    setNatives([]);
-                    setNativeCursor(null);
-                  }}
-                >
-                  <option value="codex">Codex</option>
-                  <option value="claude">Claude Code</option>
-                </select>
-                <button
-                  className="secondary"
-                  disabled={busy}
-                  onClick={() => void work(() => nativeList())}
-                >
-                  <RefreshCw size={14} />
-                  Getir
-                </button>
-              </div>
-            </div>
-            <div className="session-list">
-              {natives
-                .filter((n) =>
-                  n.title
-                    .toLocaleLowerCase("tr")
-                    .includes(query.toLocaleLowerCase("tr")),
-                )
-                .map((n) => (
-                  <button
-                    key={n.id}
-                    onClick={() => choose("native:" + n.id, n)}
-                  >
-                    <Terminal size={19} />
-                    <span className="grow">
-                      <strong>{n.title}</strong>
-                      <small>{n.cwd || n.provider}</small>
-                    </span>
-                    <ExternalLink size={14} />
-                  </button>
-                ))}
-            </div>
-            {nativeCursor && (
-              <button
-                className="secondary"
-                disabled={busy}
-                onClick={() => void work(() => nativeList(true))}
-              >
-                Daha fazla
-              </button>
-            )}
           </div>
         ) : (
           <div className={"workspace " + (!inspector ? "wide" : "")}>
@@ -1436,6 +1225,14 @@ function App() {
                                 </button>
                               )}
                           </div>
+                          {m.created && (
+                            <time
+                              className="message-time"
+                              dateTime={new Date(m.created).toISOString()}
+                            >
+                              {time(m.created)}
+                            </time>
+                          )}
                         </article>
                       </React.Fragment>
                     ))}
@@ -1662,7 +1459,14 @@ function App() {
                     )}
                     <button
                       type="button"
+                      className="dictation-button"
+                      title={
+                        voiceState === "recording"
+                          ? "Dikteyi bitir"
+                          : "Dikte — taslağa yaz"
+                      }
                       aria-label="Dikte — taslağa yaz"
+                      aria-pressed={voiceState === "recording"}
                       disabled={
                         voiceState === "sending" || voiceState === "starting"
                       }
@@ -1673,11 +1477,6 @@ function App() {
                       }
                     >
                       <Mic size={16} />
-                      {voiceState === "recording"
-                        ? "Dikteyi bitir"
-                        : voiceState === "sending"
-                          ? "Yazıya çevriliyor…"
-                          : "Dikte"}
                     </button>
                     <div>
                       <input
@@ -1699,18 +1498,6 @@ function App() {
                         onClick={() => fileInput.current?.click()}
                       >
                         <Paperclip size={18} />
-                      </button>
-                      <button
-                        type="button"
-                        className="voice-button"
-                        onClick={() => {
-                          stopVoice(false);
-                          setModal("voice");
-                          setVoiceState("idle");
-                        }}
-                      >
-                        <Mic size={16} />
-                        Sesli asistan
                       </button>
                     </div>
                     <button
@@ -1799,17 +1586,24 @@ function App() {
                     )}
                   </div>
                 )}
-                <details className="events">
-                  <summary>
-                    Teknik kayıtlar <span>{events.length}</span>
-                  </summary>
-                  {events.slice(-30).map((e) => (
-                    <div key={e.id}>
-                      <span>{e.type}</span>
-                      <small>#{e.id}</small>
-                    </div>
-                  ))}
-                </details>
+                <div className="inspector-bottom">
+                  <button
+                    className="rail-action"
+                    onClick={() => setModal("sessions")}
+                  >
+                    <MessageSquare size={17} /> Oturumlar
+                  </button>
+                  <UsageLimits
+                    deviceId={task?.deviceId || snap.localDeviceId}
+                    connected={connected && !offline}
+                  />
+                  <button
+                    className="rail-action"
+                    onClick={() => setModal("settings")}
+                  >
+                    <Settings size={17} /> Ayarlar
+                  </button>
+                </div>
               </aside>
             )}
           </div>
@@ -1830,13 +1624,17 @@ function App() {
             role="dialog"
             aria-modal="true"
             aria-label={
-              modal === "settings"
-                ? "Ayarlar"
-                : modal === "voice"
-                  ? "Sesli asistan"
-                  : preview
-                    ? "Dosya önizleme"
-                    : "Çalışma alanı işlemi"
+              modal === "sessions"
+                ? "Oturumlar"
+                : modal === "jobs"
+                  ? "İşler"
+                  : modal === "settings"
+                    ? "Ayarlar"
+                    : modal === "voice"
+                      ? "Sesli asistan"
+                      : preview
+                        ? "Dosya önizleme"
+                        : "Çalışma alanı işlemi"
             }
             className={
               "modal " +
@@ -1859,6 +1657,78 @@ function App() {
             >
               <X size={20} />
             </button>
+            {modal === "jobs" && (
+              <div className="page">
+                <div className="page-title">
+                  <div>
+                    <h1>İşler</h1>
+                    <p>
+                      Devam eden işleri takip et, ihtiyaç duyduklarında yön ver.
+                    </p>
+                  </div>
+                  <span className="metric">
+                    {active.length}
+                    <small>aktif iş</small>
+                  </span>
+                </div>
+                <div className="task-tree">
+                  {taskTree(
+                    snap.tasks.filter((t) => !!t.parentTaskId),
+                    snap.assistantId,
+                  ).map(({ task: t, depth, path, childCount }: any) => (
+                    <button
+                      className={"job-card tree-job " + (depth ? "nested" : "")}
+                      style={{ marginLeft: Math.min(depth, 6) * 24 }}
+                      key={t.id}
+                      onClick={() => choose(t.id)}
+                    >
+                      <small className="tree-path" title={path.join(" → ")}>
+                        {path.join(" → ")}
+                      </small>
+                      <h3>{title(t)}</h3>
+                      <div>
+                        <Badge task={t} />
+                        <span className="quiet">
+                          {t.provider} · {t.deviceId || "yerel"}
+                          {childCount > 0 ? ` · ${childCount} alt görev` : ""}
+                        </span>
+                        <span className="quiet">{date(t.updatedAt)}</span>
+                      </div>
+                    </button>
+                  ))}
+                  {!snap.tasks.some((t) => t.id !== snap.assistantId) && (
+                    <p>Henüz iş yok.</p>
+                  )}
+                </div>
+              </div>
+            )}
+            {modal === "sessions" && (
+              <>
+                <h2>Oturumlar</h2>
+                <input
+                  ref={search}
+                  autoFocus
+                  placeholder="Workspace oturumlarında ara…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+                <div className="session-list">
+                  <button onClick={() => choose("assistant")}>
+                    <Sparkles size={20} />
+                    <span className="grow">
+                      <strong>Asistan</strong>
+                      <small>Kalıcı sohbet</small>
+                    </span>
+                  </button>
+                  {filtered
+                    .filter((t) => t.id !== snap.assistantId && !t.parentTaskId)
+                    .map(row)}
+                  {!filtered.some(
+                    (t) => t.id !== snap.assistantId && !t.parentTaskId,
+                  ) && <p className="quiet">Henüz başka oturum yok.</p>}
+                </div>
+              </>
+            )}
             {modal === "new" && (
               <>
                 <span className="eyebrow">YENİ BİR BAŞLANGIÇ</span>

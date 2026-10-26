@@ -107,7 +107,7 @@ fun WorkActivityGroup(run: WorkActivityRun) {
                 run.items.forEach { item -> key(item.id) { WorkActivityRow(item) } }
             }
         } else if (run.items.isNotEmpty()) {
-            Text("${run.items.last().title} · ${if (run.state == "failed") "Hata" else if (run.state == "cancelled") "İptal" else "Tamamlandı"}", Modifier.padding(start = 26.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${friendlyToolLabel(run.items.last().title)} · ${if (run.state == "failed") "Hata" else if (run.state == "cancelled") "İptal" else "Tamamlandı"}", Modifier.padding(start = 26.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -128,7 +128,7 @@ private fun WorkActivityRow(item: WorkActivityItem) {
             Icon(icon, null, Modifier.size(17.dp), tint = color)
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text(item.title, style = MaterialTheme.typography.bodySmall, color = color)
+                Text(friendlyToolLabel(item.title), style = MaterialTheme.typography.bodySmall, color = color)
                 val preview = item.input.ifBlank { item.output }.replace('\n', ' ')
                 if (preview.isNotBlank()) Text(preview, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -147,4 +147,9 @@ private fun WorkActivityRow(item: WorkActivityItem) {
             }
         }
     }
+}
+
+fun friendlyToolLabel(value: String): String {
+    val labels = mapOf("cancel_task" to "Görevi durdur", "send_to_subagent" to "Alt ajana mesaj ilet", "delegate_task" to "Yeni görev başlat", "wait_for_task" to "Görev sonucunu bekle", "get_task_status" to "Görev durumunu kontrol et", "task_status" to "Görev durumunu kontrol et", "get_task_result" to "Görev sonucunu al", "get_notifications" to "Gelişmeleri kontrol et", "answer_subagent" to "Alt ajanın sorusunu yanıtla", "list_tasks" to "İşleri listele", "orchestrator_capabilities" to "Cihaz ve yetenekleri kontrol et", "exec_command" to "Komut çalıştır", "read_file" to "Dosyayı oku", "write_file" to "Dosyayı kaydet", "apply_patch" to "Dosyayı düzenle", "update_plan" to "Planı güncelle", "request_user_input" to "Kullanıcıdan bilgi iste")
+    return labels.entries.firstOrNull { value == it.key || value.endsWith("__" + it.key) || value.endsWith("." + it.key) }?.value ?: value
 }

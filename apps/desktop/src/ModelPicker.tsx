@@ -49,8 +49,10 @@ export function ModelPicker({
           type="button"
           onClick={() => setOpen(!open)}
           aria-expanded={open}
+          aria-label="Model ve düşünme seviyesi"
         >
           <span>{current?.label || value?.model || "Model seç"}</span>
+          <small>{value?.effort || "Otomatik"}</small>
           <ChevronDown size={14} />
         </button>
         {open && (
@@ -65,6 +67,26 @@ export function ModelPicker({
               />
             </label>
             {error && <small role="status">{error}</small>}
+            <div className="model-effort">
+              <Brain size={15} />
+              <span>Düşünme seviyesi</span>
+              <select
+                aria-label="Reasoning seviyesi"
+                value={value?.effort || ""}
+                disabled={!current?.efforts.length}
+                onChange={(e) =>
+                  value &&
+                  onChange({ ...value, effort: e.target.value || undefined })
+                }
+              >
+                <option value="">Otomatik</option>
+                {current?.efforts.map((e) => (
+                  <option key={e} value={e}>
+                    {e}
+                  </option>
+                ))}
+              </select>
+            </div>
             {models
               .filter((m) =>
                 (m.label + " " + m.provider)
@@ -78,7 +100,6 @@ export function ModelPicker({
                   aria-pressed={current === m}
                   onClick={() => {
                     onChange({ provider: m.provider, model: m.model });
-                    setOpen(false);
                   }}
                 >
                   <span>
@@ -93,22 +114,6 @@ export function ModelPicker({
           </div>
         )}
       </div>
-      <Brain size={15} />
-      <select
-        aria-label="Reasoning seviyesi"
-        value={value?.effort || ""}
-        disabled={!current?.efforts.length}
-        onChange={(e) =>
-          value && onChange({ ...value, effort: e.target.value || undefined })
-        }
-      >
-        <option value="">Otomatik</option>
-        {current?.efforts.map((e) => (
-          <option key={e} value={e}>
-            {e}
-          </option>
-        ))}
-      </select>
     </div>
   );
 }

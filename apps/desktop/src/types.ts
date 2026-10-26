@@ -47,6 +47,7 @@ export type Event = {
   payload: Record<string, any>;
 };
 export type Message = {
+  created?: number;
   runId?: string;
   id: string;
   role: string;

@@ -33,8 +33,14 @@ fun ModelControls(model: WorkspaceModel, snapshot: JSONObject, modifier: Modifie
     }
     val current = models.find { it.optString("provider") == selected?.optString("provider") && it.optString("model") == selected?.optString("model") }
     fun choose(value: JSONObject) { picked = value; model.selections[model.selected] = value }
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        TextButton(onClick = { open = true }, modifier = Modifier.weight(1f)) { Text(current?.optString("label") ?: selected?.optString("model")?.takeIf { it.isNotBlank() } ?: "Model seç", maxLines = 1) }
+    TextButton(onClick = { open = true }, modifier = modifier) {
+        Column(Modifier.fillMaxWidth()) {
+            Text(current?.optString("label") ?: selected?.optString("model")?.takeIf { it.isNotBlank() } ?: "Model seç", maxLines = 1)
+            Text(selected?.optString("effort")?.takeIf { it.isNotBlank() } ?: "Otomatik düşünme", style = MaterialTheme.typography.labelSmall)
+        }
+    }
+    if(open) AlertDialog(onDismissRequest = { open = false }, title = { Text("Model seç") }, text = {
+        Column {
         Box {
             TextButton(onClick = { effortsOpen = true }, enabled = (current?.optJSONArray("efforts")?.length() ?: 0) > 0) { Text(selected?.optString("effort")?.takeIf { it.isNotBlank() } ?: "Otomatik") }
             DropdownMenu(expanded = effortsOpen, onDismissRequest = { effortsOpen = false }) {
@@ -46,14 +52,11 @@ fun ModelControls(model: WorkspaceModel, snapshot: JSONObject, modifier: Modifie
                 }
             }
         }
-    }
-    if(open) AlertDialog(onDismissRequest = { open = false }, title = { Text("Model seç") }, text = {
-        Column {
             OutlinedTextField(value = search, onValueChange = { search = it }, label = { Text("Model ara") })
             if(error.isNotBlank()) Text(error, style = MaterialTheme.typography.bodySmall)
             Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
                 models.filter { (it.optString("label") + it.optString("provider")).contains(search, true) }.forEach { row ->
-                    TextButton(onClick = { choose(JSONObject().put("provider", row.getString("provider")).put("model", row.getString("model"))); open = false }, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = { choose(JSONObject().put("provider", row.getString("provider")).put("model", row.getString("model"))) }, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.fillMaxWidth()) { Text(row.getString("label")); Text(row.getString("provider"), style = MaterialTheme.typography.labelSmall) }
                     }
                 }

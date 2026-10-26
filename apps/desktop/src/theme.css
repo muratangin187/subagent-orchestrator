@@ -24,7 +24,7 @@
 :root[data-theme='dark'][data-accent='copper'] { --accent: oklch(0.80 0.10 45); }
 :root[data-theme='dark'][data-accent='rose'] { --accent: oklch(0.79 0.10 10); }
 /* Product hierarchy: navigation is quiet, the transcript carries the content. */
-.app { grid-template-columns: 248px minmax(0, 1fr); }
+.app { grid-template-columns: minmax(0, 1fr); }
 .sidebar { border-right: 1px solid var(--line); }
 .brand { font-size: 19px; letter-spacing: -0.4px; padding-bottom: 24px; }
 .brand-mark { background: none; color: var(--accent); width: 28px; height: 28px; }
@@ -129,7 +129,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 .onboarding h1 { font-size: 30px; }
 .lucide { stroke-width: 1.75; }
 @keyframes breathe { 50% { transform: scale(1.03); } }
-@media (max-width: 1150px) { .app { grid-template-columns: 220px minmax(0, 1fr); } .page { padding: 24px; } }
+@media (max-width: 1150px) { .app { grid-template-columns: minmax(0, 1fr); } .page { padding: 24px; } }
 /* A work queue, not three mostly-empty dashboard columns. */
 .board { grid-template-columns: minmax(0, 1fr); gap: 28px; }
 .lane > h3 { justify-content: flex-start; gap: 8px; margin-bottom: 0; }
@@ -179,7 +179,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
   border: 1px solid var(--control);
 }
 
-.composer-tools { flex-wrap: wrap; gap: 8px; }
+.composer-tools { flex-wrap: nowrap; gap: 8px; }
 .model-controls { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .model-controls select { width: auto; max-width: 120px; border: 0; background: transparent; color: var(--muted); }
 .model-picker { position: relative; }

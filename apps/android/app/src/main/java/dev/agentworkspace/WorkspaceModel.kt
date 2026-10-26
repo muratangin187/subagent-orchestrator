@@ -23,6 +23,7 @@ data class ChatLine(
     val attachments: List<ChatAttachment> = emptyList(),
     val runId: String = "",
     val order: Long = id.toLongOrNull() ?: Long.MAX_VALUE,
+    val created: Long = 0,
 )
 
 fun JSONArray.chatAttachments() =
@@ -285,6 +286,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                         line
                             ?.copy(
                                 runId = e.optString("runId"),
+                                created = e.optLong("created"),
                                 order = if (type == "assistant_message") events.objects().firstOrNull { delta ->
                                     val dp = delta.optJSONObject("payload")
                                     delta.optString("type") == "assistant_delta" && delta.optString("runId") == e.optString("runId") && (dp?.optString("itemId") ?: "") == payload.optString("id", payload.optString("itemId"))

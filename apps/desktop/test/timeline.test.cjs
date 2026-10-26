@@ -144,3 +144,8 @@ test("live trailing group and streamed message keep their positions after comple
   events.push({id:4,type:"assistant_message",runId:"r",created:4,payload:{id:"m",text:"Hello"}});
   assert.equal(workSlots(events,projectMessages(events)).tail.length,1);
 });
+test("message timestamps retain event time and never invent a missing timestamp", async () => {
+ const { projectMessages } = await import('../src/timeline.mjs');
+ const rows=projectMessages([{id:1,type:'message_queued',created:1700000000000,payload:{message:'Hello'}},{id:2,type:'assistant_message',payload:{text:'Reply'}}]);
+ assert.equal(rows[0].created,1700000000000); assert.equal(rows[1].created,undefined);
+});

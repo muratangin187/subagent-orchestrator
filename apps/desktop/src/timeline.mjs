@@ -48,7 +48,7 @@ export function projectMessages(events) {
   );
   for (const e of events) {
     const p = e.payload || {},
-      base = { id: String(e.id), runId: e.runId };
+      base = { id: String(e.id), runId: e.runId, created: e.created };
     if (e.type === "provider_handoff") {
       messages.push({
         ...base,

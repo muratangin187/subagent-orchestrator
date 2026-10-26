@@ -1,6 +1,10 @@
 # Agent Workspace for Android — alpha
 
-A native Kotlin/Compose companion for a computer running the standalone orchestrator. Two views share one local service: **Assistant**, a persistent Codex conversation that delegates long tasks, and **Sessions**, for Codex/Claude conversations and local history. A job drawer opens child transcripts and pending questions.
+A native Kotlin/Compose companion for a computer running the standalone orchestrator. The persistent **Assistant** delegates long tasks. The three-dot chat menu contains model/effort selection, remaining quota, settings and **Sessions**. Sessions open in a bottom sheet and list only Workspace conversations; selecting one replaces the current chat. Device selection belongs to the new-session form. The header job count always opens the hierarchical job list, including when no jobs are active. There is no bottom navigation bar.
+
+Voice assistant opens from the header. The composer contains the message field, dictation microphone, attachment and send buttons. Dictation fills the draft without sending it. Messages show their recorded local time (HH:mm); orchestration tools use readable labels.
+
+The desktop companion follows the same conversation-first layout: no left sidebar; sessions, remaining quota and settings live in the right rail. Jobs and Workspace sessions open in dialogs. Model and effort share a single composer control.
 
 Messages include raw-text copy. Expand **Worked for** to inspect the turn’s tool calls and provider-published thinking; tap an item for its input/output. Active turns show a running timer.
 

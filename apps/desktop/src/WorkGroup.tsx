@@ -1,3 +1,4 @@
+import { toolLabel } from "./tool-label.mjs";
 import { useState, useEffect } from "react";
 import {
   ChevronRight,
@@ -65,7 +66,7 @@ function Item({ item }: { item: WorkItem }) {
         onClick={() => setExpanded(!expanded)}
       >
         <Icon size={15} />
-        <span className="work-item-title">{item.title}</span>
+        <span className="work-item-title">{toolLabel(item.title)}</span>
         <span className="work-item-preview">
           {(item.input || item.output || "").replace(/\s+/g, " ").slice(0, 100)}
         </span>
@@ -146,7 +147,7 @@ export function WorkGroup({ run }: { run: WorkRun }) {
       </button>
       {!expanded && last && (
         <div className="work-group-preview">
-          {last.title} ·{" "}
+          {toolLabel(last.title)} ·{" "}
           {run.state === "failed"
             ? "Hata"
             : run.state === "cancelled"

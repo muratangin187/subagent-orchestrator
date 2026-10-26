@@ -1,5 +1,8 @@
 package dev.agentworkspace
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -125,6 +128,8 @@ fun WorkspaceApp(model: WorkspaceModel) {
     }
     val dictatePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed -> if (allowed) dictate() else model.showError("Dikte için mikrofon izni gerekiyor.") }
     var showVoice by remember { mutableStateOf(false) }
+    var showSessions by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var settingsFromVoice by remember { mutableStateOf(false) }
     var navigationHistory by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
@@ -168,7 +173,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
     var questionTask by remember { mutableStateOf<JSONObject?>(null) }
     var confirmCancel by remember { mutableStateOf<JSONObject?>(null) }
     var nativeProvider by remember { mutableStateOf("codex") }
-    val drawer = rememberDrawerState(DrawerValue.Closed)
+    var showJobs by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val files =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
@@ -202,7 +207,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
             JSONObject()
                 .put("tab", tab)
                 .put("title", title)
-                .put("drawer", drawer.isOpen)
+                .put("drawer", showJobs)
                 .put("selected", model.selected)
                 .put("native", model.nativeSelection)
         navigationHistory = ArrayList(navigationHistory + page.toString())
@@ -222,12 +227,12 @@ fun WorkspaceApp(model: WorkspaceModel) {
             title = page.getString("title")
             val native = page.optJSONObject("native")
             if (native != null) model.openNative(native) else model.open(page.getString("selected"))
-            if (page.optBoolean("drawer")) scope.launch { drawer.open() }
+            if (page.optBoolean("drawer")) scope.launch { showJobs = true }
         }
     }
     val hasOverlay =
         showVoice ||
-            showSettings ||
+            showSettings || showSessions || showMenu || showJobs ||
             showNew ||
             showExternal ||
             showAttachmentSource ||
@@ -238,24 +243,20 @@ fun WorkspaceApp(model: WorkspaceModel) {
         enabled =
             !keyboardVisible &&
                 !hasOverlay &&
-                (drawer.isOpen || tab != "assistant" || navigationHistory.isNotEmpty())
+                (showJobs || tab != "assistant" || navigationHistory.isNotEmpty())
     ) {
-        if (drawer.isOpen) scope.launch { drawer.close() } else goBack()
+        if (showJobs) scope.launch { showJobs = false } else goBack()
     }
     fun openTask(t: JSONObject) {
         rememberPage()
         model.open(t.getString("id"))
         title = t.optString("title")
         tab = "chat"
-        scope.launch { drawer.close() }
+        scope.launch { showJobs = false }
     }
-    ModalNavigationDrawer(
-        drawerState = drawer,
-        drawerContent = {
-            ModalDrawerSheet(
-                modifier = Modifier.widthIn(max = 360.dp),
-                drawerContainerColor = MaterialTheme.colorScheme.surface,
-            ) {
+    if (showJobs) {
+        ModalBottomSheet(onDismissRequest = { showJobs = false }) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 700.dp)) {
                 Row(
                     Modifier.fillMaxWidth().padding(24.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -268,7 +269,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                         )
                         Text("Asistanın görev ağacı", style = MaterialTheme.typography.bodySmall)
                     }
-                    IconButton(onClick = { scope.launch { drawer.close() } }) {
+                    IconButton(onClick = { scope.launch { showJobs = false } }) {
                         Icon(Icons.Default.Close, "Kapat")
                     }
                 }
@@ -319,8 +320,8 @@ fun WorkspaceApp(model: WorkspaceModel) {
                     }
                 }
             }
-        },
-    ) {
+        }
+    }
         Scaffold(
             modifier = Modifier.imePadding(),
             topBar = {
@@ -349,17 +350,24 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             }
                     },
                     actions = {
-                        UsageLimits(model, (current ?: model.nativeSelection)?.optString("deviceId")?.takeIf { it.isNotBlank() } ?: s.snapshot.optString("localDeviceId"), (current ?: model.nativeSelection)?.optString("provider") ?: "codex")
-                        IconButton(
-                            onClick = {
-                                settingsFromVoice = false
-                                showSettings = true
+                        IconButton(onClick = { showVoice = true }) { Icon(Icons.Default.GraphicEq, "Sesli asistan") }
+                        TextButton(onClick = { scope.launch { showJobs = true } }, modifier = Modifier.semantics { contentDescription = "İşler, $openJobs aktif" }) { Text("$openJobs") }
+                        Box {
+                            IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, "Sohbet menüsü") }
+                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }, modifier = Modifier.width(300.dp)) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text("Model ve düşünme", style = MaterialTheme.typography.labelSmall)
+                                    ModelControls(model, s.snapshot, Modifier.fillMaxWidth())
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        UsageLimits(model, current?.optString("deviceId")?.takeIf { it.isNotBlank() } ?: s.snapshot.optString("localDeviceId"), current?.optString("provider") ?: "codex")
+                                        Text("Kalan kota", Modifier.padding(start = 8.dp))
+                                    }
+                                }
+                                DropdownMenuItem(text = { Text("Oturumlar") }, leadingIcon = { Icon(Icons.Default.Forum, null) }, onClick = { showMenu = false; showSessions = true })
+                                DropdownMenuItem(text = { Text("Yeni oturum") }, leadingIcon = { Icon(Icons.Default.Add, null) }, onClick = { showMenu = false; showNew = true })
+                                DropdownMenuItem(text = { Text("Asistana dön") }, leadingIcon = { Icon(Icons.Default.ChatBubbleOutline, null) }, onClick = { showMenu = false; tab = "assistant"; title = "Asistan"; model.open("assistant") })
+                                DropdownMenuItem(text = { Text("Ayarlar") }, leadingIcon = { Icon(Icons.Default.Settings, null) }, onClick = { showMenu = false; settingsFromVoice = false; showSettings = true })
                             }
-                        ) {
-                            Icon(Icons.Default.Settings, "Ayarlar")
-                        }
-                        TextButton(onClick = { scope.launch { drawer.open() } }) {
-                            Text("İşler · $openJobs")
                         }
                     },
                 )
@@ -424,36 +432,24 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                 )
                                 TextButton(onClick = model::cancelPending) { Text("Kuyruğu sil") }
                             }
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            if (model.nativeSelection == null) ModelControls(model, s.snapshot, Modifier.weight(1f))
-                            TextButton(onClick = { if (dictationState.active) voiceModel.stop() else dictatePermission.launch(android.Manifest.permission.RECORD_AUDIO) }) {
-                                Icon(Icons.Default.Mic, null)
-                                Text(if (dictationState.active) "Vazgeç" else "Dikte")
-                            }
-                        }
                         if (dictationState.active && !showVoice) Text(dictationState.phase, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.labelSmall)
                         if (dictationState.error != null && !showVoice) Text(dictationState.error!!, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
                         Row(
                             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.Bottom,
                         ) {
+                            key(tab, model.selected, model.nativeSelection?.optString("id")) {
+                                RichMessageInput(value = draft, onValueChange = { changeDraft(it) }, onFile = { model.upload(it) }, modifier = Modifier.weight(1f))
+                            }
+                            IconButton(onClick = { if (dictationState.active) voiceModel.stop() else dictatePermission.launch(android.Manifest.permission.RECORD_AUDIO) }) {
+                                Icon(if (dictationState.active) Icons.Default.Stop else Icons.Default.Mic, if (dictationState.active) "Dikteyi bitir" else "Dikte", tint = MaterialTheme.colorScheme.primary)
+                            }
                             IconButton(
                                 onClick = { showAttachmentSource = true },
                                 enabled = !s.loading && s.attached.size < 5,
                             ) {
                                 Icon(Icons.Default.AttachFile, "Dosya ekle")
                             }
-                            key(tab, model.selected, model.nativeSelection?.optString("id")) {
-                                RichMessageInput(value = draft, onValueChange = { changeDraft(it) }, onFile = { model.upload(it) }, modifier = Modifier.weight(1f))
-                            }
-                            if (tab == "assistant")
-                                IconButton(onClick = { showVoice = true }) {
-                                    Icon(
-                                        Icons.Default.GraphicEq,
-                                        "Sesli asistan",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
                             IconButton(
                                 onClick = {
                                     if (model.nativeSelection != null) showExternal = true
@@ -472,28 +468,6 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             }
                         }
                     }
-                    if (!keyboardVisible)
-                        NavigationBar {
-                            NavigationBarItem(
-                                selected = tab != "sessions",
-                                onClick = {
-                                    tab = "assistant"
-                                    title = "Asistan"
-                                    model.open("assistant")
-                                },
-                                icon = { Icon(Icons.Default.ChatBubbleOutline, "Asistan") },
-                                label = { Text("Asistan") },
-                            )
-                            NavigationBarItem(
-                                selected = tab == "sessions",
-                                onClick = {
-                                    tab = "sessions"
-                                    model.listNative(nativeProvider)
-                                },
-                                icon = { Icon(Icons.Default.Forum, "Oturumlar") },
-                                label = { Text("Oturumlar") },
-                            )
-                        }
                 }
             },
         ) { padding ->
@@ -516,103 +490,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                         }
                     }
                 if (s.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-                if (tab == "sessions") {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        (s.snapshot.optJSONArray("devices")?.objects() ?: emptyList()).forEach { device ->
-                            FilterChip(selected = model.newDeviceId.ifBlank { s.snapshot.optString("defaultDeviceId", "local") } == device.optString("id"), onClick = { model.newDeviceId = device.optString("id"); model.listNative(nativeProvider) }, label = { Text(device.optString("name")) })
-                        }
-                    }
-
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        FilterChip(
-                            selected = nativeProvider == "codex",
-                            onClick = {
-                                nativeProvider = "codex"
-                                model.listNative("codex")
-                            },
-                            label = { Text("Codex") },
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        FilterChip(
-                            selected = nativeProvider == "claude",
-                            onClick = {
-                                nativeProvider = "claude"
-                                model.listNative("claude")
-                            },
-                            label = { Text("Claude") },
-                        )
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = { showNew = true }) { Text("＋ Yeni") }
-                    }
-                    OutlinedTextField(
-                        sessionQuery,
-                        { sessionQuery = it },
-                        singleLine = true,
-                        label = { Text("Oturum ara") },
-                        leadingIcon = { Icon(Icons.Default.Search, null) },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    )
-                    LazyColumn(
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        item {
-                            Text(
-                                "BU UYGULAMADA",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.secondary,
-                            )
-                        }
-                        items(
-                            tasks.filter {
-                                !it.has("parentTaskId") &&
-                                    it.optString("provider") == nativeProvider &&
-                                    it.optString("title").contains(sessionQuery, true)
-                            },
-                            key = { "managed-" + it.getString("id") },
-                        ) { t ->
-                            SessionCard(
-                                t.optString("title"),
-                                t.optString("deviceId", "local") + " · " + t.optString("provider") + " · " + statusLabel(t.optString("status")),
-                            ) {
-                                openTask(t)
-                            }
-                        }
-                        item {
-                            Text(
-                                "YEREL GEÇMİŞ",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.secondary,
-                            )
-                        }
-                        items(
-                            s.nativeSessions.filter {
-                                it.optString("title").contains(sessionQuery, true) ||
-                                    it.optString("cwd").contains(sessionQuery, true)
-                            },
-                            key = { "native-" + it.getString("id") },
-                        ) { t ->
-                            SessionCard(
-                                t.optString("title"),
-                                t.optString("provider") + " · Harici oturum",
-                            ) {
-                                rememberPage()
-                                model.openNative(t)
-                                title = t.optString("title")
-                                tab = "chat"
-                            }
-                        }
-                        if (s.nativeCursor != null)
-                            item {
-                                TextButton(onClick = { model.listNative(nativeProvider, true) }) {
-                                    Text("Daha fazla oturum")
-                                }
-                            }
-                    }
-                } else {
+                if (tab != "sessions") {
                     if (model.nativeSelection != null)
                         Text(
                             "Harici oturum · geçmiş görüntüleniyor. Devam etmeden önce terminaldeki aktif turu durdur.",
@@ -737,7 +615,6 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                 ) {
                                     Column(Modifier.padding(horizontal = if (line.role == "user") 16.dp else 0.dp, vertical = 12.dp)) {
                                         MarkdownMessage(line.text) { path -> model.openFileLink(path, (current ?: model.nativeSelection)?.optString("deviceId")?.takeIf { it.isNotBlank() } ?: s.snapshot.optString("localDeviceId")) }
-                                        RawCopyButton(line.text)
                                         line.attachments.forEach { attachment ->
                                             Spacer(Modifier.height(10.dp))
                                             AttachmentCard(
@@ -746,6 +623,11 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                             ) {
                                                 model.openAttachment(attachment)
                                             }
+                                        }
+                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            RawCopyButton(line.text)
+                                            Spacer(Modifier.weight(1f))
+                                            if (line.created > 0) Text(java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(line.created)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     }
                                 }
@@ -780,6 +662,22 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                     }
                                 }
                             }
+                    }
+                }
+            }
+        }
+    if (showSessions) {
+        ModalBottomSheet(onDismissRequest = { showSessions = false }) {
+            Column(Modifier.fillMaxWidth().padding(20.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Oturumlar", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { showSessions = false; showNew = true }) { Text("Yeni oturum") }
+                }
+                OutlinedTextField(sessionQuery, { sessionQuery = it }, label = { Text("Oturum ara") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                LazyColumn(Modifier.heightIn(max = 500.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item { SessionCard("Asistan", "Kalıcı sohbet") { showSessions = false; tab = "assistant"; title = "Asistan"; model.open("assistant") } }
+                    items(tasks.filter { it.optString("id") != s.snapshot.optString("assistantId") && it.optString("parentTaskId").let { p -> p.isBlank() || p == "null" } && it.optString("title").contains(sessionQuery, true) }.sortedByDescending { it.optLong("updatedAt") }, key = { it.optString("id") }) { t ->
+                        SessionCard(t.optString("title"), t.optString("deviceId") + " · " + t.optString("provider")) { showSessions = false; openTask(t) }
                     }
                 }
             }
