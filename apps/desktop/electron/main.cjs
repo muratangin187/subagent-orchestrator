@@ -27,7 +27,7 @@ protocol.registerSchemesAsPrivileged([
 let win, connection;
 const file = () => path.join(app.getPath("userData"), "connection.enc");
 async function save(c) {
-  if (!safeStorage.isEncryptionAvailable())
+  if (!(await safeStorage.isAsyncEncryptionAvailable()))
     throw Error("macOS güvenli anahtar deposu kullanılamıyor.");
   await fs.mkdir(app.getPath("userData"), { recursive: true });
   await fs.writeFile(
