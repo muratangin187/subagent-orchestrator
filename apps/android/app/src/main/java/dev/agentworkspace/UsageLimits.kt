@@ -36,17 +36,18 @@ fun UsageLimits(model: WorkspaceModel, device: String, provider: String) {
     val current = providers.find { it.optString("provider") == provider }
     val windows = current?.optJSONArray("windows")?.objects() ?: emptyList()
     val used = windows.maxOfOrNull { it.optDouble("usedPercent") }
+    val remaining = used?.let { (100.0 - it).coerceIn(0.0, 100.0) }
     Box {
-        TextButton(onClick = { open = !open }, contentPadding = PaddingValues(4.dp), modifier = Modifier.semantics { contentDescription = "$provider kullanım limitleri" }) {
+        TextButton(onClick = { open = !open }, contentPadding = PaddingValues(4.dp), modifier = Modifier.semantics { contentDescription = "$provider kalan kota" }) {
             Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(progress = { ((used ?: 0.0) / 100).toFloat() }, modifier = Modifier.fillMaxSize(), strokeWidth = 3.dp, trackColor = MaterialTheme.colorScheme.surfaceContainerHighest)
-                Text(used?.let { "${it.roundToInt()}%" } ?: "—", style = MaterialTheme.typography.labelSmall)
+                CircularProgressIndicator(progress = { ((remaining ?: 0.0) / 100).toFloat() }, modifier = Modifier.fillMaxSize(), strokeWidth = 3.dp, trackColor = MaterialTheme.colorScheme.surfaceContainerHighest)
+                Text(remaining?.let { "${it.roundToInt()}%" } ?: "—", style = MaterialTheme.typography.labelSmall)
             }
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.widthIn(max = 320.dp).heightIn(max = 480.dp)) {
             Column(Modifier.padding(16.dp)) {
-                Text("Kullanılan limit · $device", style = MaterialTheme.typography.titleSmall)
-                Text("Halka: $provider · en dolu pencere", style = MaterialTheme.typography.bodySmall)
+                Text("Kalan kota · $device", style = MaterialTheme.typography.titleSmall)
+                Text("Halka: $provider · en az kotası kalan dönem", style = MaterialTheme.typography.bodySmall)
                 if(error.isNotBlank()) Text(error + " Son alınan değerler.", color = MaterialTheme.colorScheme.error)
                 if(providers.isEmpty()) Text("Limit bilgisi bekleniyor…")
                 providers.forEach { p ->
@@ -55,8 +56,8 @@ fun UsageLimits(model: WorkspaceModel, device: String, provider: String) {
                     if(p.has("error")) Text(p.optString("error"), style = MaterialTheme.typography.bodySmall)
                     p.optJSONArray("windows")?.objects()?.forEach { w ->
                         Spacer(Modifier.height(8.dp))
-                        Text("${w.optString("label")} · %${w.optDouble("usedPercent").roundToInt()}", style = MaterialTheme.typography.labelMedium)
-                        LinearProgressIndicator(progress = { (w.optDouble("usedPercent") / 100).toFloat() }, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp))
+                        Text("${w.optString("label")} · %${(100.0 - w.optDouble("usedPercent")).coerceIn(0.0, 100.0).roundToInt()} kalan", style = MaterialTheme.typography.labelMedium)
+                        LinearProgressIndicator(progress = { ((100.0 - w.optDouble("usedPercent")).coerceIn(0.0, 100.0) / 100).toFloat() }, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp))
                         Text(if(w.has("resetsAt")) "Yenilenme: " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(w.optLong("resetsAt"))) else "Yenilenme zamanı bilinmiyor", style = MaterialTheme.typography.bodySmall)
                     }
                     Text("Kontrol: " + DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(p.optLong("checkedAt"))), style = MaterialTheme.typography.labelSmall)

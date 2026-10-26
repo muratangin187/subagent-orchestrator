@@ -52,8 +52,8 @@ export function UsageLimits({
   }, [deviceId, connected]);
   return (
     <details className="usage-limits">
-      <summary aria-label="Sağlayıcı kullanım limitleri">
-        <small>KULLANILAN LİMİT · {deviceId || "yerel"}</small>
+      <summary aria-label="Sağlayıcıların kalan kotası">
+        <small>KALAN KOTA · {deviceId || "yerel"}</small>
         {["codex", "claude"].map((provider) => {
           const row = providers.find((p) => p.provider === provider);
           const window = row?.windows.reduce<Window | undefined>(
@@ -67,12 +67,12 @@ export function UsageLimits({
                 <small>{window?.label || "Bilgi yok"}</small>
               </span>
               <strong>
-                {window ? `${Math.round(window.usedPercent)}%` : "—"}
+                {window ? `${Math.round(100 - window.usedPercent)}%` : "—"}
               </strong>
               <progress
-                aria-label={`${provider} kullanılan limit`}
+                aria-label={`${provider} kalan kota`}
                 max={100}
-                value={window?.usedPercent || 0}
+                value={window ? 100 - window.usedPercent : 0}
                 className={!window ? "unknown" : ""}
               />
             </div>
@@ -80,8 +80,8 @@ export function UsageLimits({
         })}
       </summary>
       <div className="usage-popover">
-        <h3>Kullanım limitleri</h3>
-        <p>En dolu pencere özetlenir. Yüzdeler kullanılan payı gösterir.</p>
+        <h3>Kalan kota</h3>
+        <p>En az kotası kalan dönem özetlenir. Yüzdeler kalan payı gösterir.</p>
         {!connected && <p>Bağlantı yok.</p>}
         {error && (
           <p role="status">{error} Son alınan değerler gösteriliyor.</p>
@@ -93,8 +93,8 @@ export function UsageLimits({
             {p.windows.map((w) => (
               <div className="usage-window" key={w.id}>
                 <span>{w.label}</span>
-                <strong>{Math.round(w.usedPercent)}%</strong>
-                <progress max={100} value={w.usedPercent} />
+                <strong>{Math.round(100 - w.usedPercent)}%</strong>
+                <progress max={100} value={100 - w.usedPercent} />
                 <small>
                   {w.resetsAt
                     ? `Yenilenme: ${new Date(w.resetsAt).toLocaleString("tr-TR")}`

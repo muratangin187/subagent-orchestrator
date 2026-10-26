@@ -171,7 +171,7 @@ voice flow. Both use the existing server-side ElevenLabs connection.
 
 ### Hesap limitleri ve görev ağacı
 
-Masaüstünde Ayarlar'ın üstündeki Codex/Claude çubukları, mobilde sohbet başlığındaki halka **kullanılan** limit yüzdesini gösterir. Birden fazla pencere varsa özet en dolu pencereyi seçer. Üzerine basınca kısa dönem, haftalık ve sağlayıcının sunduğu model pencereleri ile yenilenme zamanları açılır. Değerler seçili oturumun çalıştığı cihazdaki hesaptan, yaklaşık dakikada bir okunur. Bilinmeyen değer sıfır olarak gösterilmez; güncelleme hatası ve son kontrol zamanı ayrıntıda belirtilir.
+Masaüstünde Ayarlar'ın üstündeki Codex/Claude çubukları, mobilde sohbet başlığındaki halka **kalan** kota yüzdesini gösterir. Birden fazla dönem varsa özet en az kotası kalan dönemi seçer. Üzerine basınca kısa dönem, haftalık ve sağlayıcının sunduğu model pencereleri ile yenilenme zamanları açılır. Değerler seçili oturumun çalıştığı cihazdaki hesaptan, yaklaşık dakikada bir okunur. Bilinmeyen değer sıfır olarak gösterilmez; güncelleme hatası ve son kontrol zamanı ayrıntıda belirtilir.
 
 İşler ekranı alt görevlerin alt görevlerini de içerir. Girinti ve üst görev yolu ilişkiyi gösterir. Mobilde aktif iş filtresi, aktif bir alt görevin üst görevlerini de bağlam için tutar. Masaüstü bağımsız oturumları ayrıca işaretler.
 
@@ -202,3 +202,5 @@ it. Promotion is scoped, idempotent and rejected if already dispatched, inactive
 or requesting a model change. Claude messages remain queued; the UI does not
 silently interrupt and restart Claude. Background notifications stay queued and
 are not shown as user steering cards.
+
+Usage indicators display **remaining quota** (`100 - usedPercent`), including both sidebar bars, the mobile ring and all detail rows. The summary selects the window with the least remaining quota; missing data remains unknown, never 100%.
