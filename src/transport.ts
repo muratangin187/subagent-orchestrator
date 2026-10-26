@@ -1,3 +1,5 @@
+import { Devices } from "./devices/registry.js";
+import { RemoteDriver } from "./devices/remote.js";
 import { randomUUID } from "node:crypto";
 import { createServer, request, type Server } from "node:http";
 import {
@@ -169,9 +171,19 @@ export async function serve(
         throw new Error("Socket path is not a socket");
       unlinkSync(sock);
     }
+    const devices = new Devices(home, workspace?.cwd ?? process.cwd());
     engine = new Engine(
       store,
-      (p) => (p === "codex" ? new CodexDriver() : new ClaudeDriver()),
+      (p, task) =>
+        devices.remote(task?.deviceId)
+          ? new RemoteDriver(
+              devices.get(task!.deviceId!),
+              devices.config.coordinatorSshHost!,
+              workspace?.cwd ?? process.cwd(),
+            )
+          : p === "codex"
+            ? new CodexDriver()
+            : new ClaudeDriver(),
       z.coerce
         .number()
         .int()
@@ -186,6 +198,7 @@ export async function serve(
         .parse(process.env.ORCHESTRATOR_MAX_DEPTH ?? 3),
       30 * 60_000,
       home,
+      devices,
     );
     engine.recover();
     const owner = engine;

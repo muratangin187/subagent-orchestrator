@@ -37,3 +37,32 @@ jobs:
           packages: platform-tools
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - run: ./apps/android/gradlew -p apps/android :app:assembleRelease :app:lintRelease -PwithFirebase=false
+
+  glasses:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/even-g2/package-lock.json
+      - run: npm ci --prefix apps/even-g2
+      - run: npm test --prefix apps/even-g2
+      - run: npm run build --prefix apps/even-g2
+      - run: npm run pack --prefix apps/even-g2 -- https://workspace.example.invalid
+
+  desktop:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci --prefix apps/desktop
+      - run: npm test --prefix apps/desktop
+      - run: npm run build --prefix apps/desktop

@@ -1,0 +1,25 @@
+{
+  "name": "agent-workspace-glasses",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "test": "tsx --test test/*.test.ts",
+    "simulator": "node node_modules/@evenrealities/evenhub-simulator/bin/index.js http://127.0.0.1:5173 --automation-port 9898",
+    "pack": "node scripts/pack.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@evenrealities/even_hub_sdk": "0.0.16"
+  },
+  "devDependencies": {
+    "@evenrealities/evenhub-cli": "0.2.0",
+    "@evenrealities/evenhub-simulator": "0.9.5",
+    "typescript": "7.0.2",
+    "tsx": "4.23.15",
+    "vite": "^7.0.0",
+    "@types/node": "26.6.5"
+  }
+}

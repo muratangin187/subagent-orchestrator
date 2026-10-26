@@ -115,3 +115,154 @@ test("concurrent speech requests share synthesis and only root replies can be sp
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("glasses voice context is authorized and part of request deduplication", async () => {
+  const home = mkdtempSync(join(tmpdir(), "voice-context-"));
+  const store = new Store(join(home, "state.sqlite"));
+  const taskId = "12345678-1234-4234-8234-123456789abc";
+  let calls = 0;
+  let submitted: any;
+  const controller: any = {
+    store,
+    scope: { id: "scope" },
+    get: () => undefined,
+    engine: {
+      status: (_: unknown, id: string) => {
+        if (id !== taskId) throw Error("Forbidden task");
+      },
+    },
+    submit: (input: any) => {
+      submitted = input;
+      return { commandId: input.id };
+    },
+  };
+  const http: any = async (url: string) => {
+    if (url.includes("/voices"))
+      return Response.json({ voices: [{ voice_id: "v", name: "Test" }] });
+    calls++;
+    return Response.json({ text: "Devam et." });
+  };
+  try {
+    const service = new VoiceService(controller, home, http);
+    await service.configure({ apiKey: "test-credential", voiceId: "v" });
+    const payload = {
+      clientRequestId: "22345678-1234-4234-8234-123456789abc",
+      audio: Buffer.alloc(6400).toString("base64"),
+      contextTaskId: taskId,
+    };
+    await service.transcribe(payload);
+    await service.transcribe(payload);
+    assert.equal(calls, 1);
+    assert.equal(submitted.target, "assistant");
+    assert.ok(submitted.body.includes(taskId));
+    await assert.rejects(
+      service.transcribe({ ...payload, contextTaskId: undefined }),
+      /conflict/,
+    );
+    await assert.rejects(
+      service.transcribe({
+        ...payload,
+        contextTaskId: "32345678-1234-4234-8234-123456789abc",
+      }),
+      /Forbidden/,
+    );
+    assert.equal(calls, 1);
+  } finally {
+    store.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("empty transcription has a readable error, no submission and no automatic replay", async () => {
+  const home = mkdtempSync(join(tmpdir(), "voice-empty-"));
+  const store = new Store(join(home, "state.sqlite"));
+  let calls = 0;
+  const c: any = {
+    store,
+    get: () => undefined,
+    submit: () => {
+      throw Error("Must not submit");
+    },
+  };
+  const http: any = async (url: string) => {
+    if (url.includes("/voices"))
+      return Response.json({ voices: [{ voice_id: "test", name: "Test" }] });
+    calls++;
+    return Response.json({ text: "   " });
+  };
+  try {
+    const service = new VoiceService(c, home, http);
+    await service.configure({
+      apiKey: "test-only-not-a-real-key",
+      voiceId: "test",
+    });
+    const input = {
+      clientRequestId: "12345678-1234-4234-8234-123456789abc",
+      audio: Buffer.alloc(6400, 1).toString("base64"),
+    };
+    await assert.rejects(service.transcribe(input), /Konuşma algılanamadı/);
+    await assert.rejects(service.transcribe(input), /Konuşma algılanamadı/);
+    assert.equal(calls, 1);
+  } finally {
+    store.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("voice device selection validates registry and remains bound to request identity", async () => {
+  const home = mkdtempSync(join(tmpdir(), "voice-device-"));
+  const store = new Store(join(home, "state.sqlite"));
+  let submitted: any,
+    calls = 0;
+  const c: any = {
+    store,
+    get: () => undefined,
+    engine: {
+      devices: {
+        get: (id: string) => {
+          if (!["xps", "macbook"].includes(id)) throw Error("Unknown device");
+          return { id };
+        },
+      },
+    },
+    submit: (v: any) => {
+      submitted = v;
+      return { commandId: v.id };
+    },
+  };
+  const http: any = async (url: string) => {
+    if (url.includes("/voices"))
+      return Response.json({ voices: [{ voice_id: "test", name: "Test" }] });
+    calls++;
+    return Response.json({ text: "Bu işi çöz" });
+  };
+  try {
+    const service = new VoiceService(c, home, http);
+    await service.configure({
+      apiKey: "test-only-not-a-real-key",
+      voiceId: "test",
+    });
+    const payload = {
+      clientRequestId: "42345678-1234-4234-8234-123456789abc",
+      audio: Buffer.alloc(6400, 1).toString("base64"),
+      deviceId: "macbook",
+    };
+    await service.transcribe(payload);
+    assert.equal(submitted.target, "assistant");
+    assert.match(submitted.body, /selected execution device macbook/);
+    await service.transcribe(payload);
+    assert.equal(calls, 1);
+    await assert.rejects(
+      service.transcribe({ ...payload, deviceId: "xps" }),
+      /conflict/,
+    );
+    await assert.rejects(
+      service.transcribe({ ...payload, deviceId: "missing" }),
+      /Unknown device/,
+    );
+    assert.equal(calls, 1);
+  } finally {
+    store.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});

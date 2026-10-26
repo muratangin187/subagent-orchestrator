@@ -1,0 +1,60 @@
+{
+  "name": "agent-workspace-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Your personal agent workspace for macOS",
+  "author": "Murat Angin",
+  "license": "MIT",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "start": "electron .",
+    "test": "node --test test/*.test.cjs",
+    "pack": "npm run build && electron-builder --mac dir",
+    "dist": "npm run build && electron-builder --mac dmg"
+  },
+  "build": {
+    "appId": "dev.agentworkspace.desktop",
+    "productName": "Agent Workspace",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": "dmg",
+      "identity": "-",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Sesli asistana göndereceğiniz mesajı kaydetmek için mikrofon kullanılır."
+      },
+      "icon": "build/icon.icns",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    }
+  },
+  "dependencies": {
+    "dompurify": "3.4.17",
+    "lucide-react": "1.61.0",
+    "pdfjs-dist": "6.4.299",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "electron": "45.0.0",
+    "electron-builder": "26.18.0",
+    "jsdom": "29.1.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  },
+  "type": "module"
+}

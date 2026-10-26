@@ -1,3 +1,4 @@
+import type { Devices } from "./devices/registry.js";
 import { classifyFailure } from "./providers/failure.js";
 import { fileURLToPath } from "node:url";
 import { providerCapabilities } from "./providers/capabilities.js";
@@ -42,6 +43,7 @@ export class Engine {
     readonly maxDepth = 3,
     private runTimeoutMs = 30 * 60_000,
     private workspaceRoot?: string,
+    readonly devices?: Devices,
   ) {
     this.changes.setMaxListeners(0);
   }
@@ -342,6 +344,7 @@ export class Engine {
           version: 1,
           scope,
           providers: await providerCapabilities(),
+          ...this.devices?.public(),
           maxConcurrencyPerDepth: this.maxConcurrency,
           maxProviderSessions: this.maxConcurrency * this.maxDepth,
           maxDepth: this.maxDepth,
@@ -410,10 +413,25 @@ export class Engine {
             "unsupported",
             "Worktree root is not configured",
           );
-        const sourceCwd = parent?.cwd ?? scope.cwd;
+        const deviceId =
+          a.deviceId ?? parent?.deviceId ?? this.devices?.config.defaultId;
+        const device = deviceId ? this.devices?.get(deviceId) : undefined;
+        if (a.deviceId && !this.devices)
+          throw Error("Device routing is not configured");
+        const remote = this.devices?.remote(deviceId);
+        const sourceCwd =
+          a.cwd ??
+          (parent && parent.deviceId === deviceId
+            ? parent.cwd
+            : !a.deviceId && !remote
+              ? scope.cwd
+              : (device?.cwd ?? scope.cwd));
         const baseCommit =
-          a.isolation === "worktree" ? resolveCommit(sourceCwd) : undefined;
+          a.isolation === "worktree" && !remote
+            ? resolveCommit(sourceCwd)
+            : undefined;
         const t: Task = {
+          deviceId,
           isolation: a.isolation,
           sourceCwd,
           baseCommit,
@@ -430,7 +448,10 @@ export class Engine {
           role: a.role,
           cwd:
             a.isolation === "worktree"
-              ? worktreePath(this.workspaceRoot!, id)
+              ? worktreePath(
+                  remote ? device!.cwd + "/.orchestrator" : this.workspaceRoot!,
+                  id,
+                )
               : sourceCwd,
           runtimeMode,
           interactionMode,
@@ -660,7 +681,7 @@ export class Engine {
     }
   }
   private start(task: Task) {
-    const driver = this.factory(task.provider);
+    const driver = this.factory(task.provider, task);
     let resolve!: () => void;
     const finished = new Promise<void>((r) => (resolve = r));
     const active: Active = { driver, runId: task.runId, finished, resolve };
@@ -678,7 +699,7 @@ export class Engine {
     }, this.runTimeoutMs);
     void (async () => {
       try {
-        await prepareWorkspace(task);
+        if (!this.devices?.remote(task.deviceId)) await prepareWorkspace(task);
         if (this.store.task(task.id).cancelled) throw new Error("Cancelled");
         const result = await driver.run({
           task,
@@ -707,6 +728,11 @@ export class Engine {
             this.touch(t);
           },
           event: (e) => {
+            if (e.type === "device_workspace") {
+              const current = this.store.task(task.id);
+              Object.assign(current, e.payload);
+              this.store.saveTask(current);
+            }
             this.store.event(this.store.task(task.id), e.type, e.payload);
           },
           question: (prompt) =>
@@ -741,7 +767,15 @@ export class Engine {
         });
         this.finish(task.id, run.id, "completed", result);
       } catch (e) {
-        this.finish(task.id, run.id, "failed", undefined, errorText(e));
+        this.finish(
+          task.id,
+          run.id,
+          errorText(e).startsWith("REMOTE_UNCERTAIN:")
+            ? "recovery_required"
+            : "failed",
+          undefined,
+          errorText(e),
+        );
       } finally {
         clearTimeout(timer);
         await driver.close().catch(() => {});
@@ -754,7 +788,7 @@ export class Engine {
   private finish(
     id: string,
     runId: string,
-    status: "completed" | "failed",
+    status: "completed" | "failed" | "recovery_required",
     result?: string,
     error?: string,
   ) {

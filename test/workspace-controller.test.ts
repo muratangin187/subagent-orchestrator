@@ -352,3 +352,96 @@ test("assistant quota retains child notification until an explicit user continua
     await s.close();
   }
 });
+
+test("WebView CORS is opt-in, exact-origin and still requires bearer authentication", async () => {
+  const s = setup();
+  const old = process.env.ORCHESTRATOR_BROWSER_ORIGINS;
+  process.env.ORCHESTRATOR_BROWSER_ORIGINS = JSON.stringify([
+    "https://glasses.example",
+  ]);
+  const g = await startGateway(s.c, s.home, 0);
+  if (old === undefined) delete process.env.ORCHESTRATOR_BROWSER_ORIGINS;
+  else process.env.ORCHESTRATOR_BROWSER_ORIGINS = old;
+  try {
+    const url = `http://127.0.0.1:${(g.server.address() as any).port}/v1/state`;
+    const origin = "https://glasses.example";
+    const preflight = await fetch(url, {
+      method: "OPTIONS",
+      headers: { Origin: origin },
+    });
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get("Access-Control-Allow-Origin"), origin);
+    assert.equal(
+      (await fetch(url, { headers: { Origin: origin } })).status,
+      401,
+    );
+    const token = readFileSync(join(s.home, "device-secret"), "utf8");
+    const valid = await fetch(url, {
+      headers: { Origin: origin, Authorization: `Bearer ${token}` },
+    });
+    assert.equal(valid.status, 200);
+    assert.equal(valid.headers.get("Vary"), "Origin");
+    for (const bad of [
+      "null",
+      "https://glasses.example.evil.test",
+      "https://evil.example",
+    ]) {
+      const denied = await fetch(url, {
+        method: "OPTIONS",
+        headers: { Origin: bad },
+      });
+      assert.equal(denied.status, 403);
+      assert.equal(denied.headers.get("Access-Control-Allow-Origin"), null);
+    }
+  } finally {
+    await g.close();
+    await s.close();
+  }
+});
+
+test("recent chat starts at the tail and older pages preserve chronological order", async () => {
+  const s = setup();
+  const g = await startGateway(s.c, s.home, 0);
+  try {
+    const t: any = await s.engine.call(s.c.scope, "delegate_task", {
+      task: "history fixture",
+      provider: "codex",
+      mode: "async",
+      clientRequestId: "history-fixture",
+    });
+    await until(() => !!s.drivers[0]?.context);
+    for (let i = 0; i < 450; i++)
+      s.store.event(s.store.task(t.taskId), "assistant_message", {
+        text: "message " + i,
+      });
+    const url = `http://127.0.0.1:${(g.server.address() as any).port}/v1/messages?taskId=${t.taskId}`;
+    const headers = {
+      Authorization:
+        "Bearer " + readFileSync(join(s.home, "device-secret"), "utf8"),
+    };
+    const tail: any = await (
+      await fetch(url + "&tail=true", { headers })
+    ).json();
+    assert.equal(tail.messages.length, 200);
+    assert.equal(tail.messages.at(-1).payload.text, "message 449");
+    assert.ok(tail.olderCursor);
+    const older: any = await (
+      await fetch(url + "&before=" + tail.olderCursor, { headers })
+    ).json();
+    assert.equal(older.messages.length, 200);
+    assert.ok(older.messages.at(-1).id < tail.messages[0].id);
+    const ids = [...older.messages, ...tail.messages].map((m: any) => m.id);
+    assert.equal(new Set(ids).size, 400);
+    assert.deepEqual(
+      ids,
+      [...ids].sort((a, b) => a - b),
+    );
+    const incremental: any = await (
+      await fetch(url + "&after=" + tail.nextOffset, { headers })
+    ).json();
+    assert.equal(incremental.messages.length, 0);
+  } finally {
+    await g.close();
+    await s.close();
+  }
+});

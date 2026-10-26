@@ -1,0 +1,1786 @@
+import { AttachmentPreview } from "./AttachmentPreview";
+import React, { useState, useEffect, useRef } from "react";
+import { createRoot } from "react-dom/client";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import {
+  Sparkles,
+  MessageSquare,
+  Layers,
+  Search,
+  Plus,
+  Settings,
+  ArrowUp,
+  Paperclip,
+  Mic,
+  X,
+  ChevronRight,
+  PanelRight,
+  Square,
+  FileText,
+  Download,
+  Volume2,
+  Command,
+  RefreshCw,
+  CheckCircle2,
+  AlertCircle,
+  Activity,
+  Terminal,
+  ExternalLink,
+} from "lucide-react";
+import {
+  request,
+  isActive,
+  ordered,
+  title,
+  labels,
+  toMessages,
+  type Task,
+  type Snapshot,
+  type Event,
+  type Message,
+  type Native,
+} from "./types";
+import "./style.css";
+const empty: Snapshot = { tasks: [], inputs: [] };
+const uid = () => crypto.randomUUID();
+const time = (n: number) =>
+  new Date(n).toLocaleTimeString("tr", { hour: "2-digit", minute: "2-digit" });
+const date = (n: number) =>
+  new Date(n).toLocaleDateString("tr", { day: "numeric", month: "short" });
+function Badge({ task }: { task: Task }) {
+  return (
+    <span className={"badge " + task.status}>
+      <i />
+      {labels[task.status] || task.status}
+    </span>
+  );
+}
+function App() {
+  const [connected, setConnected] = useState(false),
+    [origin, setOrigin] = useState(""),
+    [offline, setOffline] = useState(false),
+    [snap, setSnap] = useState<Snapshot>(empty),
+    [view, setView] = useState("assistant"),
+    [selected, setSelected] = useState("assistant"),
+    [query, setQuery] = useState(""),
+    [inspector, setInspector] = useState(true),
+    [modal, setModal] = useState(""),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false),
+    [messages, setMessages] = useState<Message[]>([]),
+    [events, setEvents] = useState<Event[]>([]),
+    [older, setOlder] = useState<number | null>(null),
+    [drafts, setDrafts] = useState<Record<string, string>>({}),
+    [files, setFiles] = useState<{ id: string; name: string }[]>([]),
+    [provider, setProvider] = useState("codex"),
+    [deviceId, setDeviceId] = useState(""),
+    [model, setModel] = useState(""),
+    [newText, setNewText] = useState(""),
+    [natives, setNatives] = useState<Native[]>([]),
+    [nativeCursor, setNativeCursor] = useState<string | null>(null),
+    [external, setExternal] = useState<Native | null>(null),
+    [nativeHistoryCursor, setNativeHistoryCursor] = useState<string | null>(
+      null,
+    ),
+    [nativeConfirmed, setNativeConfirmed] = useState(false),
+    [answers, setAnswers] = useState<Record<string, string>>({}),
+    [preview, setPreview] = useState<{
+      id: string;
+      name: string;
+      content: string;
+    } | null>(null),
+    [voiceState, setVoiceState] = useState("idle"),
+    [voiceElapsed, setVoiceElapsed] = useState(0),
+    [micLevel, setMicLevel] = useState(0),
+    [speakerMuted, setSpeakerMuted] = useState(false),
+    [micId, setMicId] = useState(""),
+    [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([]),
+    [voices, setVoices] = useState<{ id: string; name: string }[]>([]),
+    [voiceId, setVoiceId] = useState("");
+  const selection = useRef(selected),
+    epoch = useRef(0),
+    lastTasks = useRef<Map<string, string> | null>(null),
+    scroll = useRef<HTMLDivElement>(null),
+    search = useRef<HTMLInputElement>(null),
+    composer = useRef<HTMLTextAreaElement>(null),
+    fileInput = useRef<HTMLInputElement>(null),
+    nearBottom = useRef(true),
+    cursor = useRef(0),
+    audio = useRef<HTMLAudioElement | null>(null),
+    capture = useRef<{
+      stream: MediaStream;
+      ctx: AudioContext;
+      node: AudioWorkletNode;
+      chunks: Int16Array[];
+      count: number;
+      peak: number;
+      timer: ReturnType<typeof setInterval>;
+    } | null>(null),
+    voiceGeneration = useRef(0),
+    lock = useRef(false);
+  const task = snap.tasks.find(
+    (t) => t.id === (selected === "assistant" ? snap.assistantId : selected),
+  );
+  const active = ordered(
+    snap.tasks.filter((t) => t.id !== snap.assistantId && isActive(t)),
+  );
+  const children = ordered(
+    snap.tasks.filter((t) => t.parentTaskId === selected),
+  );
+  const draft = drafts[selected] || "";
+  const fail = (e: unknown) =>
+    setError(
+      String(e instanceof Error ? e.message : e).replace(
+        /^Error invoking remote method '[^']+': Error: /,
+        "",
+      ),
+    );
+  async function work(fn: () => Promise<void>) {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      await fn();
+    } catch (e) {
+      fail(e);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+  async function load(s: Snapshot = snap, old?: number) {
+    const pick = selection.current;
+    const id = pick === "assistant" ? s.assistantId : pick;
+    if (!id || pick.startsWith("native:")) return;
+    const gen = epoch.current;
+    const initial = cursor.current === 0;
+    const r = await request(
+      "/v1/messages?taskId=" +
+        id +
+        (old
+          ? "&before=" + old
+          : initial
+            ? "&tail=true"
+            : "&after=" + cursor.current),
+    );
+    if (gen !== epoch.current || pick !== selection.current) return;
+    setEvents((prev) => {
+      const merged = new Map(
+        [...prev, ...r.messages].map((e: Event) => [e.id, e]),
+      );
+      return [...merged.values()].sort((a, b) => a.id - b.id);
+    });
+    if (old || initial) setOlder(r.olderCursor ?? null);
+    if (!old) cursor.current = Math.max(cursor.current, r.nextOffset);
+  }
+  async function refresh() {
+    const gen = epoch.current;
+    const s = await request<Snapshot>("/v1/state");
+    if (gen !== epoch.current) return;
+    setSnap(s);
+    if (s.defaultDeviceId)
+      setDeviceId((current) => current || s.defaultDeviceId!);
+    setOffline(false);
+    if (lastTasks.current) {
+      for (const t of s.tasks) {
+        const before = lastTasks.current.get(t.id);
+        if (
+          before &&
+          before !== t.status &&
+          [
+            "completed",
+            "failed",
+            "waiting_question",
+            "recovery_required",
+          ].includes(t.status)
+        )
+          void window.desktop.notify(t.id + ":" + t.status + ":" + t.updatedAt);
+      }
+    }
+    lastTasks.current = new Map(s.tasks.map((t) => [t.id, t.status]));
+    await load(s);
+  }
+  useEffect(() => {
+    window.desktop
+      .connection()
+      .then((c) => {
+        setConnected(c.connected);
+        setOrigin(c.origin || "");
+      })
+      .catch(fail);
+  }, []);
+  useEffect(() => {
+    if (!connected) return;
+    let dead = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        await refresh();
+      } catch (e) {
+        if (!dead) {
+          setOffline(true);
+          fail(e);
+        }
+      } finally {
+        if (!dead) timer = setTimeout(poll, 4000);
+      }
+    };
+    void poll();
+    return () => {
+      dead = true;
+      clearTimeout(timer);
+      epoch.current++;
+    };
+  }, [connected, selected]);
+  useEffect(() => {
+    if (!external) setMessages(toMessages(events));
+  }, [events, external]);
+  useEffect(() => {
+    if (nearBottom.current)
+      scroll.current?.scrollTo({
+        top: scroll.current.scrollHeight,
+        behavior: "smooth",
+      });
+  }, [messages.length]);
+  useEffect(
+    () =>
+      window.desktop.onCommand((cmd) => {
+        if (cmd === "search") search.current?.focus();
+        else if (cmd === "new" || cmd === "settings") setModal(cmd);
+        else navigate(cmd);
+      }),
+    [],
+  );
+  useEffect(() => {
+    function key(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setModal("");
+        setPreview(null);
+        stopVoice(false);
+      }
+    }
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, []);
+  useEffect(() => {
+    const stop = () => {
+      if (document.hidden) stopVoice(false);
+    };
+    document.addEventListener("visibilitychange", stop);
+    return () => {
+      document.removeEventListener("visibilitychange", stop);
+      stopVoice(false);
+      audio.current?.pause();
+    };
+  }, []);
+  function navigate(v: string) {
+    setView(v);
+    if (v === "assistant") choose("assistant");
+  }
+  function choose(id: string, n?: Native) {
+    epoch.current++;
+    selection.current = id;
+    cursor.current = 0;
+    setSelected(id);
+    setExternal(n || null);
+    setNativeConfirmed(false);
+    setMessages([]);
+    setEvents([]);
+    setOlder(null);
+    setNativeHistoryCursor(null);
+    setAnswers({});
+    setFiles([]);
+    nearBottom.current = true;
+    if (n) void work(() => loadNativeMessages(n));
+    else setView(id === "assistant" ? "assistant" : "chat");
+  }
+  async function connect(local: boolean) {
+    const r = local
+      ? await window.desktop.connectLocal()
+      : await window.desktop.importConnection();
+    if (!r) return;
+    const c = await window.desktop.connection();
+    setConnected(c.connected);
+    setOrigin(c.origin || "");
+    setModal("");
+  }
+  async function send() {
+    if (!draft.trim()) return;
+    const pick = selected;
+    const attachments = files.map((f) => f.id);
+    const body: any = {
+      clientRequestId: uid(),
+      text: draft.trim(),
+      attachments,
+      ...(external ? { deviceId: external.deviceId } : {}),
+    };
+    let p =
+      pick === "assistant"
+        ? "/v1/assistant/messages"
+        : "/v1/tasks/" + pick + "/messages";
+    if (external) {
+      if (!nativeConfirmed)
+        throw Error("Önce terminalde aktif tur olmadığını doğrula.");
+      p = "/v1/sessions/messages";
+      Object.assign(body, {
+        nativeId: external.id,
+        provider: external.provider,
+        confirmExternal: true,
+      });
+    }
+    await request(p, body);
+    setDrafts((d) => ({ ...d, [pick]: "" }));
+    setFiles([]);
+    if (external) {
+      setExternal(null);
+      choose("assistant");
+      setView("sessions");
+    }
+    await refresh();
+    nearBottom.current = true;
+  }
+  async function upload(list: FileList | null) {
+    if (!list) return;
+    if (files.length + list.length > 5)
+      throw Error("En fazla 5 dosya ekleyebilirsin.");
+    for (const f of Array.from(list)) {
+      if (f.size > 5 * 1024 * 1024) throw Error(f.name + ": en fazla 5 MiB.");
+      const content = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(f);
+      });
+      const a = await request("/v1/upload", {
+        id: uid(),
+        name: f.name,
+        content,
+      });
+      setFiles((prev) => [...prev, a]);
+    }
+    if (fileInput.current) fileInput.current.value = "";
+  }
+  async function nativeList(more = false) {
+    const r = await request(
+      "/v1/native?deviceId=" +
+        encodeURIComponent(deviceId || snap.defaultDeviceId || "local") +
+        "&provider=" +
+        provider +
+        (more && nativeCursor
+          ? "&cursor=" + encodeURIComponent(nativeCursor)
+          : ""),
+    );
+    setNatives((n) => (more ? [...n, ...r.sessions] : r.sessions));
+    setNativeCursor(r.nextCursor || null);
+  }
+  async function loadNativeMessages(n: Native, more = false) {
+    const pick = "native:" + n.id;
+    const r = await request(
+      "/v1/native/messages?deviceId=" +
+        encodeURIComponent(n.deviceId || snap.localDeviceId || "local") +
+        "&provider=" +
+        n.provider +
+        "&id=" +
+        n.id +
+        (more && nativeHistoryCursor
+          ? "&cursor=" + encodeURIComponent(nativeHistoryCursor)
+          : ""),
+    );
+    if (selection.current !== pick) return;
+    const list: Message[] =
+      n.provider === "codex"
+        ? (r.thread?.turns || []).flatMap((t: any) =>
+            (t.items || []).flatMap((i: any) => {
+              const text =
+                i.text ||
+                (i.content || [])
+                  .filter((p: any) => p.type === "text")
+                  .map((p: any) => p.text)
+                  .join("\n");
+              return text
+                ? [
+                    {
+                      id: i.id || uid(),
+                      role: i.type === "userMessage" ? "user" : "assistant",
+                      text,
+                    },
+                  ]
+                : [];
+            }),
+          )
+        : (r.messages || []).map((m: any) => ({
+            id: m.uuid || uid(),
+            role: m.type === "user" ? "user" : "assistant",
+            text:
+              typeof m.message?.content === "string"
+                ? m.message.content
+                : (m.message?.content || [])
+                    .filter((p: any) => p.type === "text")
+                    .map((p: any) => p.text)
+                    .join("\n"),
+          }));
+    setMessages((prev) =>
+      more
+        ? n.provider === "codex"
+          ? [...list, ...prev]
+          : [...prev, ...list]
+        : list,
+    );
+    setNativeHistoryCursor(r.nextCursor || null);
+    setView("chat");
+  }
+  useEffect(() => {
+    if (modal !== "voice" || speakerMuted) return;
+    let dead = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let offset = 0;
+    const poll = async () => {
+      try {
+        const result = await request("/v1/voice/events?after=" + offset);
+        if (dead) return;
+        offset = result.cursor;
+        for (const event of result.events) {
+          if (
+            dead ||
+            event.type !== "assistant_message" ||
+            capture.current ||
+            document.hidden
+          )
+            continue;
+          const generation = voiceGeneration.current;
+          const response = await request("/v1/voice/speech", {
+            eventId: event.id,
+          });
+          if (
+            dead ||
+            capture.current ||
+            generation !== voiceGeneration.current ||
+            document.hidden
+          )
+            continue;
+          audio.current?.pause();
+          const player = new Audio(
+            "data:" + response.mime + ";base64," + response.audio,
+          );
+          audio.current = player;
+          setVoiceState("speaking");
+          player.onended = () => {
+            if (!dead) setVoiceState("idle");
+          };
+          await player.play();
+          // Keep subsequent responses sequential; closing/muting pauses and releases this wait.
+          await new Promise<void>((resolve) => {
+            player.onended = () => {
+              if (!dead) setVoiceState("idle");
+              resolve();
+            };
+            player.onpause = () => resolve();
+            player.onerror = () => resolve();
+          });
+        }
+      } catch (e) {
+        if (!dead) {
+          fail(e);
+          setVoiceState("idle");
+        }
+      } finally {
+        if (!dead) timer = setTimeout(poll, 2000);
+      }
+    };
+    void request("/v1/voice/status")
+      .then((status) => {
+        if (!dead) {
+          offset = status.cursor;
+          void poll();
+        }
+      })
+      .catch((e) => {
+        if (!dead) fail(e);
+      });
+    return () => {
+      dead = true;
+      clearTimeout(timer);
+      audio.current?.pause();
+    };
+  }, [modal, speakerMuted]);
+
+  async function startVoice() {
+    if (capture.current || voiceState === "starting") return;
+    const generation = ++voiceGeneration.current;
+    setError("");
+    audio.current?.pause();
+    setMicLevel(0);
+    setVoiceState("starting");
+    try {
+      const status = await request("/v1/voice/status");
+      if (!status.configured)
+        throw Error("Önce mobil uygulamada ElevenLabs bağlantısını kur.");
+      if (generation !== voiceGeneration.current) return;
+      await window.desktop.microphoneAccess();
+      if (generation !== voiceGeneration.current) return;
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          deviceId: micId ? { exact: micId } : undefined,
+        },
+        video: false,
+      });
+      if (generation !== voiceGeneration.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      setMicrophones(
+        (await navigator.mediaDevices.enumerateDevices()).filter(
+          (d) => d.kind === "audioinput",
+        ),
+      );
+      const ctx = new AudioContext({ sampleRate: 16000 });
+      try {
+        await ctx.resume();
+        await ctx.audioWorklet.addModule(
+          new URL("./capture.js", import.meta.url),
+        );
+        if (generation !== voiceGeneration.current) {
+          stream.getTracks().forEach((t) => t.stop());
+          await ctx.close();
+          return;
+        }
+        const node = new AudioWorkletNode(ctx, "pcm-capture");
+        ctx.createMediaStreamSource(stream).connect(node);
+        node.connect(ctx.destination);
+        const startedAt = Date.now();
+        let lastLevel = 0;
+        const state = {
+          stream,
+          ctx,
+          node,
+          chunks: [] as Int16Array[],
+          count: 0,
+          peak: 0,
+          timer: setInterval(() => {
+            setVoiceElapsed(Math.floor((Date.now() - startedAt) / 1000));
+            if (Date.now() - startedAt >= 30000) stopVoice(true);
+          }, 1000),
+        };
+        capture.current = state;
+        node.port.onmessage = (e) => {
+          if (capture.current !== state) return;
+          const chunk = new Int16Array(e.data);
+          if (state.count + chunk.length > 480000) {
+            stopVoice(true);
+            return;
+          }
+          let peak = 0;
+          for (const sample of chunk) peak = Math.max(peak, Math.abs(sample));
+          state.peak = Math.max(state.peak, peak);
+          if (Date.now() - lastLevel > 100) {
+            setMicLevel(Math.min(1, peak / 10000));
+            lastLevel = Date.now();
+          }
+          state.count += chunk.length;
+          state.chunks.push(chunk);
+        };
+        setVoiceElapsed(0);
+        setVoiceState("recording");
+      } catch (e) {
+        stream.getTracks().forEach((t) => t.stop());
+        await ctx.close();
+        throw e;
+      }
+    } catch (e) {
+      setVoiceState("idle");
+      fail(e);
+    }
+  }
+  function stopVoice(submit: boolean) {
+    voiceGeneration.current++;
+    const s = capture.current;
+    if (!s) {
+      if (!submit) audio.current?.pause();
+      setVoiceState("idle");
+      return;
+    }
+    capture.current = null;
+    setMicLevel(0);
+    clearInterval(s.timer);
+    s.stream.getTracks().forEach((t) => t.stop());
+    s.node.disconnect();
+    void s.ctx.close();
+    if (!submit) {
+      audio.current?.pause();
+      setVoiceState("idle");
+      return;
+    }
+    if (s.count < 1600) {
+      setVoiceState("idle");
+      fail(new Error("Kayıt çok kısa. Biraz daha uzun konuşmayı dene."));
+      return;
+    }
+    if (s.peak < 8) {
+      setVoiceState("idle");
+      fail(
+        new Error(
+          "Mikrofondan ses alınamadı. Giriş aygıtını kontrol edip yeniden dene.",
+        ),
+      );
+      return;
+    }
+    const generation = voiceGeneration.current;
+    setVoiceState("sending");
+    const pcm = new Int16Array(s.count);
+    let offset = 0;
+    for (const chunk of s.chunks) {
+      pcm.set(chunk, offset);
+      offset += chunk.length;
+    }
+    const bytes = new Uint8Array(pcm.buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 8192)
+      binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    request("/v1/voice/transcribe", {
+      clientRequestId: uid(),
+      audio: btoa(binary),
+      contextTaskId:
+        selection.current === "assistant" ||
+        selection.current.startsWith("native:")
+          ? undefined
+          : selection.current,
+    })
+      .then(() => {
+        if (generation !== voiceGeneration.current) return;
+        setVoiceState("sent");
+        void refresh();
+      })
+      .catch((e) => {
+        if (generation !== voiceGeneration.current) return;
+        fail(e);
+        setVoiceState("idle");
+      });
+  }
+  async function speak(m: Message) {
+    audio.current?.pause();
+    const generation = ++voiceGeneration.current;
+    const r = await request("/v1/voice/speech", { eventId: Number(m.id) });
+    if (generation !== voiceGeneration.current) return;
+    audio.current = new Audio("data:" + r.mime + ";base64," + r.audio);
+    await audio.current.play();
+  }
+  const filtered = ordered(
+    snap.tasks.filter((t) => t.id !== snap.assistantId && !t.parentTaskId),
+  ).filter((t) =>
+    title(t).toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr")),
+  );
+  const heading =
+    external?.title ||
+    (selected === "assistant" ? "Asistanın" : task ? title(task) : "Sohbet");
+  const row = (t: Task) => (
+    <button
+      className={"task-row " + (selected === t.id ? "selected" : "")}
+      key={t.id}
+      onClick={() => choose(t.id)}
+    >
+      <span className={"status-dot " + t.status} />
+      <span className="grow">
+        <strong>{title(t)}</strong>
+        <small>
+          {t.deviceId || "local"} · {t.provider} · {time(t.updatedAt)}
+        </small>
+      </span>
+      <ChevronRight size={15} />
+    </button>
+  );
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <div className="traffic-space" />
+        <div className="brand">
+          <div className="brand-mark">
+            <Sparkles size={21} />
+          </div>
+          <div>
+            Workspace<small>KİŞİSEL ÇALIŞMA ALANIN</small>
+          </div>
+        </div>
+        <div className="search-box">
+          <Search size={16} />
+          <input
+            ref={search}
+            placeholder="Oturumlarda ara…"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setView("sessions");
+            }}
+          />
+          <kbd>⌘ K</kbd>
+        </div>
+        <nav>
+          {[
+            [Sparkles, "Asistan", "assistant"],
+            [Layers, "İşler", "jobs"],
+            [MessageSquare, "Oturumlar", "sessions"],
+          ].map(([Icon, label, id]: any) => (
+            <button
+              key={id}
+              className={view === id ? "current" : ""}
+              onClick={() => navigate(id)}
+            >
+              <Icon size={18} />
+              {label}
+              {id === "jobs" && active.length > 0 && (
+                <span className="count">{active.length}</span>
+              )}
+            </button>
+          ))}
+        </nav>
+        <div className="side-heading">
+          SON OTURUMLAR
+          <button aria-label="Yeni oturum" onClick={() => setModal("new")}>
+            <Plus size={16} />
+          </button>
+        </div>
+        <div className="recent">
+          {filtered.slice(0, 12).map(row)}
+          {!filtered.length && (
+            <p className="quiet">Oturumların burada görünecek.</p>
+          )}
+        </div>
+        <div className="side-bottom">
+          <button onClick={() => setModal("settings")}>
+            <Settings size={17} />
+            Ayarlar<kbd>⌘ ,</kbd>
+          </button>
+          <div className="connection">
+            <i className={connected && !offline ? "online" : ""} />
+            {connected
+              ? offline
+                ? "Bağlantı kesildi"
+                : "Bilgisayar bağlı"
+              : "Bağlantı bekleniyor"}
+          </div>
+        </div>
+      </aside>
+      <main>
+        <header>
+          <div className="breadcrumb">
+            Çalışma alanı
+            <ChevronRight size={14} />
+            <strong>
+              {view === "jobs"
+                ? "İşler"
+                : view === "sessions"
+                  ? "Oturumlar"
+                  : "Asistan"}
+            </strong>
+          </div>
+          <div className="header-actions">
+            <span className="today">
+              {new Date().toLocaleDateString("tr", {
+                day: "numeric",
+                month: "long",
+                weekday: "long",
+              })}
+            </span>
+            <button
+              className="icon"
+              title="Ayrıntı paneli"
+              aria-label="Ayrıntı paneli"
+              onClick={() => setInspector(!inspector)}
+            >
+              <PanelRight size={18} />
+            </button>
+            <button className="new-button" onClick={() => setModal("new")}>
+              <Plus size={15} />
+              Yeni oturum
+            </button>
+          </div>
+        </header>
+        {error && (
+          <div role="alert" className="error">
+            <AlertCircle size={16} />
+            <span>{error}</span>
+            <button aria-label="Uyarıyı kapat" onClick={() => setError("")}>
+              <X size={16} />
+            </button>
+          </div>
+        )}
+        {!connected ? (
+          <div className="onboarding">
+            <div className="hero-mark">
+              <Sparkles size={38} />
+            </div>
+            <span className="eyebrow">DAHA GENİŞ BİR ÇALIŞMA ALANI</span>
+            <h1>
+              Her şey bir arada.
+              <br />
+              Kontrol sende.
+            </h1>
+            <p>
+              Telefondaki asistanın, oturumların ve alt ajanların.
+              <br />
+              Bu kez, tüm resmi görebileceğin bir ekranda.
+            </p>
+            <button
+              className="primary"
+              disabled={busy}
+              onClick={() => void work(() => connect(true))}
+            >
+              Bu Mac’e bağlan
+              <ChevronRight size={17} />
+            </button>
+            <button
+              className="text-button"
+              disabled={busy}
+              onClick={() => void work(() => connect(false))}
+            >
+              Başka bilgisayardan bağlantı dosyası seç
+            </button>
+            <small>Mevcut Agent Workspace sunucusunu kullanır.</small>
+          </div>
+        ) : view === "jobs" ? (
+          <div className="page">
+            <div className="page-title">
+              <div>
+                <span className="eyebrow">SEN YÖNET, AJANLAR ÇALIŞSIN</span>
+                <h1>İşlerin nabzı.</h1>
+                <p>
+                  Devam eden işleri takip et, ihtiyaç duyduklarında yön ver.
+                </p>
+              </div>
+              <span className="metric">
+                {active.length}
+                <small>aktif iş</small>
+              </span>
+            </div>
+            <div className="board">
+              {[
+                [
+                  "Devam ediyor",
+                  snap.tasks.filter(
+                    (t) =>
+                      t.id !== snap.assistantId &&
+                      isActive(t) &&
+                      !["waiting_question", "recovery_required"].includes(
+                        t.status,
+                      ),
+                  ),
+                ],
+                [
+                  "Seni bekliyor",
+                  snap.tasks.filter((t) =>
+                    ["waiting_question", "recovery_required"].includes(
+                      t.status,
+                    ),
+                  ),
+                ],
+                [
+                  "Son sonuçlananlar",
+                  ordered(
+                    snap.tasks.filter(
+                      (t) => !isActive(t) && t.id !== snap.assistantId,
+                    ),
+                  ).slice(0, 15),
+                ],
+              ].map(([label, ts]: any) => (
+                <section className="lane" key={label}>
+                  <h3>
+                    {label}
+                    <span>{ts.length}</span>
+                  </h3>
+                  {ordered(ts).map((t) => (
+                    <button
+                      className="job-card"
+                      key={t.id}
+                      onClick={() => choose(t.id)}
+                    >
+                      <div>
+                        <span className="provider">{t.provider}</span>
+                        <span className="quiet">{date(t.updatedAt)}</span>
+                      </div>
+                      <h3>{title(t)}</h3>
+                      <Badge task={t} />
+                      {t.parentTaskId && (
+                        <small className="parent">
+                          <Layers size={12} />
+                          Alt görev
+                        </small>
+                      )}
+                    </button>
+                  ))}
+                  {!ts.length && (
+                    <div className="lane-empty">
+                      <CheckCircle2 size={22} />
+                      <span>Burada bekleyen iş yok.</span>
+                    </div>
+                  )}
+                </section>
+              ))}
+            </div>
+          </div>
+        ) : view === "sessions" ? (
+          <div className="page">
+            <div className="page-title">
+              <div>
+                <span className="eyebrow">KALDIĞIN YERDEN DEVAM ET</span>
+                <h1>Oturumlar.</h1>
+                <select
+                  aria-label="Oturum cihazı"
+                  value={deviceId}
+                  onChange={(e) => {
+                    setDeviceId(e.target.value);
+                    setNatives([]);
+                    setNativeCursor(null);
+                  }}
+                >
+                  {snap.devices?.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+                <p>Workspace ve terminal konuşmaların, tek bir yerde.</p>
+              </div>
+              <button className="primary" onClick={() => setModal("new")}>
+                <Plus size={16} />
+                Yeni oturum
+              </button>
+            </div>
+            <h3>
+              Workspace oturumları{" "}
+              <span className="quiet">{filtered.length}</span>
+            </h3>
+            <div className="session-list">
+              {filtered.map((t) => (
+                <button key={t.id} onClick={() => choose(t.id)}>
+                  <span className="session-icon">
+                    <MessageSquare size={20} />
+                  </span>
+                  <span className="grow">
+                    <strong>{title(t)}</strong>
+                    <small>
+                      {t.deviceId || "local"} · {t.provider} ·{" "}
+                      {date(t.updatedAt)} {time(t.updatedAt)}
+                    </small>
+                  </span>
+                  <Badge task={t} />
+                  <ChevronRight size={16} />
+                </button>
+              ))}
+            </div>
+            <div className="section-heading">
+              <h3>
+                <Terminal size={17} />
+                Terminal ve editör oturumları
+              </h3>
+              <div className="inline">
+                <select
+                  aria-label="Terminal sağlayıcısı"
+                  value={provider}
+                  onChange={(e) => {
+                    setProvider(e.target.value);
+                    setNatives([]);
+                    setNativeCursor(null);
+                  }}
+                >
+                  <option value="codex">Codex</option>
+                  <option value="claude">Claude Code</option>
+                </select>
+                <button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => void work(() => nativeList())}
+                >
+                  <RefreshCw size={14} />
+                  Getir
+                </button>
+              </div>
+            </div>
+            <div className="session-list">
+              {natives
+                .filter((n) =>
+                  n.title
+                    .toLocaleLowerCase("tr")
+                    .includes(query.toLocaleLowerCase("tr")),
+                )
+                .map((n) => (
+                  <button
+                    key={n.id}
+                    onClick={() => choose("native:" + n.id, n)}
+                  >
+                    <Terminal size={19} />
+                    <span className="grow">
+                      <strong>{n.title}</strong>
+                      <small>{n.cwd || n.provider}</small>
+                    </span>
+                    <ExternalLink size={14} />
+                  </button>
+                ))}
+            </div>
+            {nativeCursor && (
+              <button
+                className="secondary"
+                disabled={busy}
+                onClick={() => void work(() => nativeList(true))}
+              >
+                Daha fazla
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className={"workspace " + (!inspector ? "wide" : "")}>
+            <section className="conversation">
+              <div className="chat-heading">
+                <div className="inline">
+                  <div className="assistant-mark">
+                    <Sparkles size={22} />
+                  </div>
+                  <div>
+                    <h2 title={heading}>{heading}</h2>
+                    <small>
+                      {selected === "assistant"
+                        ? "Düşüncelerini işe dönüştüren kişisel asistanın."
+                        : external
+                          ? "Terminal geçmişi"
+                          : task?.provider + " oturumu"}
+                    </small>
+                  </div>
+                </div>
+                {task && <Badge task={task} />}
+              </div>
+              <div
+                className="messages"
+                ref={scroll}
+                onScroll={() => {
+                  const el = scroll.current!;
+                  nearBottom.current =
+                    el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+                }}
+              >
+                {(older || nativeHistoryCursor) && (
+                  <button
+                    className="load-older"
+                    disabled={busy}
+                    onClick={() =>
+                      void work(() =>
+                        external
+                          ? loadNativeMessages(external, true)
+                          : load(snap, older!),
+                      )
+                    }
+                  >
+                    Önceki mesajları yükle
+                  </button>
+                )}
+                {!messages.length ? (
+                  <div className="chat-empty">
+                    <Sparkles size={30} />
+                    <h2>Bugün neyi ilerletelim?</h2>
+                    <p>
+                      Bir iş ver, bir fikir paylaş veya araştırmamı istediğin
+                      konuyu söyle.
+                    </p>
+                    <div className="suggestions">
+                      {[
+                        "Aktif işlerimi özetle",
+                        "Bugün önceliklerimiz neler?",
+                        "Yeni bir konuyu araştıralım",
+                      ].map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => {
+                            setDrafts((d) => ({ ...d, [selected]: s }));
+                            composer.current?.focus();
+                          }}
+                        >
+                          {s}
+                          <ArrowUp size={14} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  messages.map((m) => (
+                    <article key={m.id} className={"message " + m.role}>
+                      <div className="message-label">
+                        {m.role === "user"
+                          ? "Sen"
+                          : m.role === "error"
+                            ? "İşlem bilgisi"
+                            : "Asistan"}
+                        {m.role === "assistant" && selected === "assistant" && (
+                          <button
+                            aria-label="Yanıtı seslendir"
+                            title="Yanıtı seslendir"
+                            onClick={() => void work(() => speak(m))}
+                          >
+                            <Volume2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                      <div className="message-body">
+                        <Markdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            a: ({ href, children }) => (
+                              <a
+                                href={href}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  if (href)
+                                    void window.desktop
+                                      .openLink(href)
+                                      .catch(fail);
+                                }}
+                              >
+                                {children}
+                              </a>
+                            ),
+                            img: ({ alt }) => (
+                              <span className="quiet">[Görsel: {alt}]</span>
+                            ),
+                          }}
+                        >
+                          {m.text}
+                        </Markdown>
+                        {m.attachments?.map((a) => (
+                          <button
+                            className="attachment"
+                            key={a.id}
+                            onClick={() =>
+                              void work(async () =>
+                                setPreview(
+                                  await request("/v1/attachments/" + a.id),
+                                ),
+                              )
+                            }
+                          >
+                            <FileText size={17} />
+                            {a.name}
+                            <ChevronRight size={14} />
+                          </button>
+                        ))}
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+              {task?.question && (
+                <form
+                  className="question"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void work(async () => {
+                      await request("/v1/task/action", {
+                        taskId: task.id,
+                        action: "answer",
+                        questionId: task.question!.id,
+                        answer: answers,
+                        clientRequestId: uid(),
+                      });
+                      setAnswers({});
+                      await refresh();
+                    });
+                  }}
+                >
+                  <strong>Devam etmek için sana ihtiyacım var</strong>
+                  {task.question.prompt.questions?.map((q) => (
+                    <label key={q.id}>
+                      {q.question}
+                      <input
+                        required
+                        value={answers[q.id] || ""}
+                        placeholder={q.options?.map((o) => o.label).join(" / ")}
+                        onChange={(e) =>
+                          setAnswers((a) => ({ ...a, [q.id]: e.target.value }))
+                        }
+                      />
+                    </label>
+                  ))}
+                  <button className="primary" disabled={busy}>
+                    Yanıtı gönder
+                  </button>
+                </form>
+              )}
+              <div className="composer-wrap">
+                {external && (
+                  <label className="external-confirm">
+                    <input
+                      type="checkbox"
+                      checked={nativeConfirmed}
+                      onChange={(e) => setNativeConfirmed(e.target.checked)}
+                    />
+                    Bu oturumun terminalde aktif çalışmadığını doğruladım.
+                  </label>
+                )}
+                <form
+                  className="composer"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void work(send);
+                  }}
+                >
+                  <textarea
+                    ref={composer}
+                    aria-label="Mesaj"
+                    placeholder="Bir mesaj yaz veya bir iş ver…"
+                    value={draft}
+                    disabled={busy}
+                    onChange={(e) =>
+                      setDrafts((d) => ({ ...d, [selected]: e.target.value }))
+                    }
+                    onKeyDown={(e) => {
+                      if (
+                        e.key === "Enter" &&
+                        !e.shiftKey &&
+                        !e.nativeEvent.isComposing
+                      ) {
+                        e.preventDefault();
+                        void work(send);
+                      }
+                    }}
+                  />
+                  {files.length > 0 && (
+                    <div className="file-chips">
+                      {files.map((f) => (
+                        <span key={f.id}>
+                          <FileText size={14} />
+                          {f.name}
+                          <button
+                            type="button"
+                            aria-label={f.name + " kaldır"}
+                            onClick={() =>
+                              setFiles((fs) => fs.filter((a) => a.id !== f.id))
+                            }
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="composer-tools">
+                    <div>
+                      <input
+                        ref={fileInput}
+                        type="file"
+                        hidden
+                        multiple
+                        accept=".txt,.md,.json,.csv,.log,.ts,.js,.py,.html,.pdf,.png,.jpg,.jpeg,.webp"
+                        onChange={(e) =>
+                          void work(() => upload(e.target.files))
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="icon"
+                        title="Dosya ekle"
+                        aria-label="Dosya ekle"
+                        disabled={busy}
+                        onClick={() => fileInput.current?.click()}
+                      >
+                        <Paperclip size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        className="voice-button"
+                        onClick={() => {
+                          setModal("voice");
+                          setVoiceState("idle");
+                        }}
+                      >
+                        <Mic size={16} />
+                        Sesli asistan
+                      </button>
+                    </div>
+                    <button
+                      className="send"
+                      disabled={
+                        busy ||
+                        !draft.trim() ||
+                        (!!external && !nativeConfirmed)
+                      }
+                      aria-label="Gönder"
+                    >
+                      <ArrowUp size={20} />
+                    </button>
+                  </div>
+                </form>
+                <div className="composer-caption">
+                  <span>
+                    <kbd>↵</kbd> gönder · <kbd>⇧ ↵</kbd> yeni satır
+                  </span>
+                  <span>İşler arka planda devam eder.</span>
+                </div>
+              </div>
+            </section>
+            {inspector && (
+              <aside className="inspector">
+                <div className="section-heading">
+                  <h3>
+                    <Activity size={16} />
+                    Çalışma akışı
+                  </h3>
+                  <span className="count">{active.length}</span>
+                </div>
+                <p className="quiet">
+                  Sohbet devam ederken işlerin burada ilerler.
+                </p>
+                {(selected === "assistant" ? active : children).map(row)}
+                {!(selected === "assistant" ? active : children).length && (
+                  <div className="inspector-empty">
+                    <CheckCircle2 size={25} />
+                    <h4>Her şey sakin.</h4>
+                    <p>
+                      Yeni bir iş başladığında
+                      <br />
+                      ilerlemesini burada göreceksin.
+                    </p>
+                  </div>
+                )}
+                {task && (
+                  <div className="detail-card">
+                    <span className="eyebrow">OTURUM AYRINTILARI</span>
+                    <dl>
+                      <dt>Cihaz</dt>
+                      <dd>
+                        {snap.devices?.find((d) => d.id === task?.deviceId)
+                          ?.name ||
+                          task?.deviceId ||
+                          "Bu bilgisayar"}
+                      </dd>
+                      <dt>Sağlayıcı</dt>
+                      <dd>{task.provider}</dd>
+                      <dt>Son hareket</dt>
+                      <dd>{time(task.updatedAt)}</dd>
+                      <dt>Durum</dt>
+                      <dd>{labels[task.status] || task.status}</dd>
+                    </dl>
+                    {task.parentTaskId && (
+                      <button
+                        className="text-button"
+                        onClick={() => choose(task.parentTaskId!)}
+                      >
+                        Üst göreve git
+                      </button>
+                    )}
+                    {isActive(task) && (
+                      <button
+                        className="cancel-button"
+                        onClick={() => setModal("cancel")}
+                      >
+                        <Square size={13} />
+                        İşi ve alt görevleri durdur
+                      </button>
+                    )}
+                  </div>
+                )}
+                <details className="events">
+                  <summary>
+                    Teknik kayıtlar <span>{events.length}</span>
+                  </summary>
+                  {events.slice(-30).map((e) => (
+                    <div key={e.id}>
+                      <span>{e.type}</span>
+                      <small>#{e.id}</small>
+                    </div>
+                  ))}
+                </details>
+                <div className="side-note">
+                  <Command size={17} />
+                  <span>
+                    <strong>Akışını bölme.</strong>
+                    <br />⌘ K ile oturumları bul.
+                    <br />⌘ N ile yenisini başlat.
+                  </span>
+                </div>
+              </aside>
+            )}
+          </div>
+        )}
+      </main>
+      {(modal || preview) && (
+        <div
+          className="overlay"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setModal("");
+              setPreview(null);
+              stopVoice(false);
+            }
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            className={
+              "modal " +
+              (modal === "voice"
+                ? "voice-modal"
+                : preview
+                  ? "attachment-modal"
+                  : "")
+            }
+          >
+            <button
+              className="modal-close icon"
+              aria-label="Kapat"
+              onClick={() => {
+                setModal("");
+                setPreview(null);
+                stopVoice(false);
+                audio.current?.pause();
+              }}
+            >
+              <X size={20} />
+            </button>
+            {modal === "new" && (
+              <>
+                <span className="eyebrow">YENİ BİR BAŞLANGIÇ</span>
+                <h2>Bir oturum aç.</h2>
+                <label>
+                  Çalışacağı cihaz
+                  <select
+                    aria-label="Çalışacağı cihaz"
+                    value={deviceId}
+                    onChange={(e) => setDeviceId(e.target.value)}
+                  >
+                    {snap.devices?.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                        {d.id === snap.defaultDeviceId ? " · varsayılan" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p>İlk mesajınla çalışmaya başlasın.</p>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void work(async () => {
+                      const r = await request("/v1/sessions/messages", {
+                        provider,
+                        deviceId: deviceId || snap.defaultDeviceId,
+                        model: model.trim() || undefined,
+                        text: newText,
+                        clientRequestId: uid(),
+                      });
+                      setNewText("");
+                      setModal("");
+                      await refresh();
+                      setView("sessions");
+                      if (r.taskId) choose(r.taskId);
+                    });
+                  }}
+                >
+                  <label>
+                    Sağlayıcı
+                    <select
+                      value={provider}
+                      onChange={(e) => setProvider(e.target.value)}
+                    >
+                      <option value="codex">Codex</option>
+                      <option value="claude">Claude Code</option>
+                    </select>
+                  </label>
+                  <label>
+                    Model
+                    <input
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      placeholder="Sağlayıcının varsayılan modeli"
+                    />
+                  </label>
+                  <label>
+                    Ne üzerinde çalışalım?
+                    <textarea
+                      required
+                      rows={5}
+                      value={newText}
+                      onChange={(e) => setNewText(e.target.value)}
+                      placeholder="Görevi ve beklediğin sonucu anlat…"
+                    />
+                  </label>
+                  <button className="primary" disabled={busy || !connected}>
+                    Oturumu başlat
+                    <ArrowUp size={16} />
+                  </button>
+                </form>
+              </>
+            )}
+            {modal === "settings" && (
+              <>
+                <span className="eyebrow">SANA GÖRE</span>
+                <h2>Çalışma alanı ayarları</h2>
+                <div className="settings-card">
+                  <strong>Bilgisayar bağlantısı</strong>
+                  <p>{origin || "Henüz bağlı değil"}</p>
+                  <div className="inline">
+                    <button
+                      className="primary"
+                      disabled={busy}
+                      onClick={() => void work(() => connect(true))}
+                    >
+                      Bu Mac’e bağlan
+                    </button>
+                    <button
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => void work(() => connect(false))}
+                    >
+                      Dosyadan bağlan
+                    </button>
+                  </div>
+                  <small>
+                    Anahtar macOS güvenli deposuyla şifrelenir. Sohbet içeriğine
+                    eklenmez.
+                  </small>
+                </div>
+                <div className="settings-card">
+                  <strong>Sesli asistan</strong>
+                  <p>
+                    Mobil uygulamayla aynı ElevenLabs bağlantısını kullanır.
+                  </p>
+                  <button
+                    className="secondary"
+                    disabled={busy || !connected}
+                    onClick={() =>
+                      void work(async () => {
+                        const [r, s] = await Promise.all([
+                          request("/v1/voice/voices"),
+                          request("/v1/voice/status"),
+                        ]);
+                        setVoices(r.voices);
+                        setVoiceId(s.voiceId || "");
+                      })
+                    }
+                  >
+                    Sesleri getir
+                  </button>
+                  {voices.length > 0 && (
+                    <select
+                      aria-label="Asistan sesi"
+                      value={voiceId}
+                      onChange={(e) => {
+                        setVoiceId(e.target.value);
+                        void work(async () => {
+                          await request("/v1/voice/config", {
+                            voiceId: e.target.value,
+                          });
+                        });
+                      }}
+                    >
+                      {voices.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                {connected && (
+                  <button
+                    className="text-button danger"
+                    onClick={() =>
+                      void work(async () => {
+                        epoch.current++;
+                        await window.desktop.disconnect();
+                        setConnected(false);
+                        setSnap(empty);
+                        setMessages([]);
+                        setEvents([]);
+                        setDrafts({});
+                        setFiles([]);
+                        setOrigin("");
+                        setModal("");
+                      })
+                    }
+                  >
+                    Bu Mac’teki bağlantıyı kaldır
+                  </button>
+                )}
+                <p className="quiet">Agent Workspace · Mac 0.1.0</p>
+              </>
+            )}
+            {modal === "cancel" && (
+              <>
+                <h2>Bu işi durdur?</h2>
+                <p>
+                  Seçili iş ve ona bağlı alt görevler iptal edilir. Geçmiş
+                  mesajlar korunur.
+                </p>
+                <button
+                  className="primary danger-bg"
+                  disabled={busy}
+                  onClick={() =>
+                    void work(async () => {
+                      await request("/v1/task/action", {
+                        taskId: task!.id,
+                        action: "cancel",
+                        clientRequestId: uid(),
+                      });
+                      setModal("");
+                      await refresh();
+                    })
+                  }
+                >
+                  İşi ve alt görevleri durdur
+                </button>
+              </>
+            )}
+            {modal === "voice" && (
+              <>
+                <span className="eyebrow">SESLİ ASİSTAN</span>
+                <div className={"orb " + voiceState}>
+                  <Sparkles size={54} />
+                </div>
+                <h2>
+                  {voiceState === "recording"
+                    ? "Seni dinliyorum."
+                    : voiceState === "sending"
+                      ? "Asistanına iletiyorum…"
+                      : voiceState === "speaking"
+                        ? "Asistanın konuşuyor."
+                        : voiceState === "sent"
+                          ? "Yanıt bekleniyor…"
+                          : "Aklındakini söyle."}
+                </h2>
+                <p>
+                  {voiceState === "recording"
+                    ? voiceElapsed + " / 30 saniye"
+                    : "Aynı asistan. Bu kez, sesinle."}
+                </p>
+                <button
+                  className="secondary"
+                  aria-pressed={speakerMuted}
+                  onClick={() => {
+                    audio.current?.pause();
+                    setSpeakerMuted((v) => !v);
+                    if (voiceState === "speaking") setVoiceState("idle");
+                  }}
+                >
+                  <Volume2 size={16} />
+                  {speakerMuted ? "Yanıt sesini aç" : "Yanıt sesini kapat"}
+                </button>
+                <label className="microphone-picker">
+                  Mikrofon
+                  <select
+                    aria-label="Mikrofon"
+                    value={micId}
+                    disabled={["starting", "recording", "sending"].includes(
+                      voiceState,
+                    )}
+                    onFocus={() =>
+                      void navigator.mediaDevices
+                        .enumerateDevices()
+                        .then((ds) =>
+                          setMicrophones(
+                            ds.filter((d) => d.kind === "audioinput"),
+                          ),
+                        )
+                        .catch(fail)
+                    }
+                    onChange={(e) => setMicId(e.target.value)}
+                  >
+                    <option value="">Sistem varsayılanı</option>
+                    {microphones
+                      .filter((d) => d.deviceId !== "default")
+                      .map((d, i) => (
+                        <option key={d.deviceId} value={d.deviceId}>
+                          {d.label || "Mikrofon " + (i + 1)}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                {voiceState === "recording" && (
+                  <div className="mic-meter">
+                    <meter
+                      aria-label="Mikrofon ses seviyesi"
+                      min={0}
+                      max={1}
+                      value={micLevel}
+                    />
+                    <small>
+                      {micLevel > 0.01
+                        ? "Ses alınıyor"
+                        : "Ses bekleniyor — gösterge hareket etmiyorsa mikrofonu kontrol et."}
+                    </small>
+                  </div>
+                )}
+                <div className="inline voice-controls">
+                  {voiceState === "recording" ? (
+                    <>
+                      <button
+                        className="secondary"
+                        onClick={() => stopVoice(false)}
+                      >
+                        <X size={18} />
+                        Vazgeç
+                      </button>
+                      <button
+                        className="primary"
+                        onClick={() => stopVoice(true)}
+                      >
+                        <ArrowUp size={18} />
+                        Gönder
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="primary"
+                      disabled={["starting", "sending"].includes(voiceState)}
+                      onClick={() => void startVoice()}
+                    >
+                      <Mic size={19} />
+                      {voiceState === "starting"
+                        ? "Mikrofon açılıyor…"
+                        : "Konuşmaya başla"}
+                    </button>
+                  )}
+                </div>
+                <small>
+                  Mikrofon yalnızca sen başlattığında açılır.
+                  <br />
+                  Kaydı gönderdiğinde ElevenLabs üzerinden yazıya çevrilir.
+                </small>
+              </>
+            )}
+            {preview && (
+              <>
+                <span className="eyebrow">EKLİ DOSYA</span>
+                <h2>{preview.name}</h2>
+                <AttachmentPreview key={preview.id} file={preview} />
+                <button
+                  className="primary"
+                  onClick={() =>
+                    void work(async () => {
+                      await window.desktop.saveAttachment(preview.id);
+                    })
+                  }
+                >
+                  <Download size={16} />
+                  Dosyayı kaydet
+                </button>
+                <button
+                  onClick={() =>
+                    void work(() => window.desktop.openAttachment(preview.id))
+                  }
+                >
+                  Mac uygulamasında aç
+                </button>
+              </>
+            )}
+            {error && (
+              <p className="modal-error" role="alert">
+                {error}
+              </p>
+            )}
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+createRoot(document.getElementById("root")!).render(<App />);

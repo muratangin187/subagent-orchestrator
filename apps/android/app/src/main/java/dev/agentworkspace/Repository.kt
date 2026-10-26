@@ -152,8 +152,16 @@ class Repository(context: Context) {
         if (body != null)
             builder.post(body.toString().toRequestBody("application/json".toMediaType()))
         http.newCall(builder.build()).execute().use { r ->
-            val value = JSONObject(r.body?.string() ?: "{}")
+            val raw = r.body?.string().orEmpty()
+            val value = try { JSONObject(raw) } catch (_: Exception) {
+                throw IllegalStateException(if (body == null) "Sunucu yanıtı alınamadı. Bağlantıyı kontrol et." else "Gönderim sonucu belirsiz. Yeniden göndermeden önce sohbeti kontrol et.")
+            }
             if (!r.isSuccessful) throw ApiError(r.code, value.optString("error", "Bağlantı hatası"))
+            if (auth && path == "/v1/state" && value.has("coordinatorUrl")) {
+                val next = android.net.Uri.parse(value.getString("coordinatorUrl"))
+                require(next.scheme == "https" && next.host?.endsWith(".ts.net") == true && next.userInfo == null && next.query == null && (next.path.isNullOrEmpty() || next.path == "/")) { "Geçersiz merkezi sunucu adresi" }
+                vault.url = next.toString().trimEnd('/')
+            }
             return value
         }
     }

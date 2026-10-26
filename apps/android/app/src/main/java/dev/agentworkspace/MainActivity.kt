@@ -342,7 +342,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                if (s.online) "Bilgisayar bağlı" else "Bağlantı yok · yerel kayıt",
+                                if (s.online) "Bağlı · " + s.snapshot.optString("localDeviceId", "local") else "Bağlantı yok · yerel kayıt",
                                 style = MaterialTheme.typography.labelSmall,
                                 color =
                                     if (s.online) MaterialTheme.colorScheme.primary
@@ -516,6 +516,12 @@ fun WorkspaceApp(model: WorkspaceModel) {
                     }
                 if (s.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
                 if (tab == "sessions") {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        (s.snapshot.optJSONArray("devices")?.objects() ?: emptyList()).forEach { device ->
+                            FilterChip(selected = model.newDeviceId.ifBlank { s.snapshot.optString("defaultDeviceId", "local") } == device.optString("id"), onClick = { model.newDeviceId = device.optString("id"); model.listNative(nativeProvider) }, label = { Text(device.optString("name")) })
+                        }
+                    }
+
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -569,7 +575,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                         ) { t ->
                             SessionCard(
                                 t.optString("title"),
-                                t.optString("provider") + " · " + statusLabel(t.optString("status")),
+                                t.optString("deviceId", "local") + " · " + t.optString("provider") + " · " + statusLabel(t.optString("status")),
                             ) {
                                 openTask(t)
                             }
@@ -831,14 +837,20 @@ fun WorkspaceApp(model: WorkspaceModel) {
     }
     if (showNew) {
         var provider by remember { mutableStateOf("codex") }
+        var deviceId by remember { mutableStateOf(model.newDeviceId.ifBlank { s.snapshot.optString("defaultDeviceId", "local") }) }
         var chosenModel by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showNew = false },
             title = { Text("Yeni oturum") },
             text = {
                 Column {
+                    Text("Çalışacağı cihaz")
+                    (s.snapshot.optJSONArray("devices")?.objects() ?: emptyList()).forEach { device ->
+                        FilterChip(selected = deviceId == device.optString("id"), onClick = { deviceId = device.optString("id") }, label = { Text(device.optString("name")) })
+                    }
+
                     Text(
-                        "Çalışma alanı: " + s.snapshot.optString("cwd"),
+                        "Çalışma alanı: " + ((s.snapshot.optJSONArray("devices")?.objects() ?: emptyList()).find { it.optString("id") == deviceId }?.optString("cwd") ?: s.snapshot.optString("cwd")),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Row {
@@ -869,6 +881,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                 TextButton(
                     onClick = {
                         rememberPage()
+                        model.newDeviceId = deviceId
                         model.newProvider = provider
                         model.newModel = chosenModel
                         model.newSession()

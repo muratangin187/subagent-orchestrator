@@ -11,6 +11,11 @@ const taskId = z.string().uuid();
 const request = { clientRequestId: key.optional() };
 export const delegateSchema = z
   .object({
+    deviceId: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9_-]{0,39}$/)
+      .optional(),
+    cwd: z.string().startsWith("/").optional(),
     isolation: z.enum(["shared", "worktree"]).default("shared"),
     task: text,
     provider: z.enum(["claude", "codex"]).optional(),

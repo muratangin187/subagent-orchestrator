@@ -29,3 +29,9 @@ apps/android/.kotlin/
 *.keystore
 *.lineage
 *.idsig
+
+# Even Hub install bundles are generated, not source.
+*.ehpk
+
+apps/desktop/release/
+apps/desktop/build/app.iconset/

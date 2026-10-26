@@ -21,6 +21,7 @@ const { values, positionals } = parseArgs({
     help: { type: "boolean" },
     port: { type: "string" },
     model: { type: "string" },
+    target: { type: "string" },
   },
 });
 const home = resolve(values.home ?? defaultHome());
@@ -41,6 +42,11 @@ Default ceiling: read-only. Set --parent to a unique stable ID to reconnect late
 Unix/macOS/Linux supported; use WSL2 on Windows.`);
     return;
   }
+  if (command === "device-worker") {
+    await (await import("./devices/worker.js")).worker();
+    return;
+  }
+  if (command === "workspace-proxy") { const server=await (await import("./workspace/proxy.js")).startProxy(values.target!,Number(values.port??8787)); process.on("SIGTERM",()=>server.close(()=>process.exit(0))); return; }
   if (command === "doctor") {
     const exec = promisify(execFile);
     const providers = await Promise.all(

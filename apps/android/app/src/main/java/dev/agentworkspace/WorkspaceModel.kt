@@ -66,6 +66,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
     var nativeSelection: JSONObject? = null
         private set
 
+    var newDeviceId = ""
     var newProvider = "codex"
     var newModel = ""
     private var polling: Job? = null
@@ -356,6 +357,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                 .put("text", value)
                 .put("provider", native?.optString("provider") ?: newProvider)
                 .put("attachments", JSONArray(state.value.attached.map { it.first }))
+        if (selected == "new" || native != null) body.put("deviceId", native?.optString("deviceId")?.takeIf { it.isNotBlank() } ?: newDeviceId.ifBlank { state.value.snapshot.optString("defaultDeviceId", "local") })
         if (newModel.isNotBlank()) body.put("model", newModel)
         if (native != null)
             body.put("nativeId", native.getString("id")).put("confirmExternal", true)
@@ -412,7 +414,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                 val result =
                     withContext(Dispatchers.IO) {
                         repo.request(
-                            "/v1/native?provider=$provider" +
+                            "/v1/native?provider=$provider&deviceId=${newDeviceId.ifBlank { state.value.snapshot.optString("defaultDeviceId", "local") }}" +
                                 (cursor?.let { "&cursor=" + URLEncoder.encode(it, "UTF-8") } ?: "")
                         )
                     }
@@ -445,7 +447,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                 val r =
                     withContext(Dispatchers.IO) {
                         repo.request(
-                            "/v1/native/messages?provider=${session.getString("provider")}&id=${session.getString("id")}" +
+                            "/v1/native/messages?provider=${session.getString("provider")}&id=${session.getString("id")}&deviceId=${session.optString("deviceId", "local")}" +
                                 (cursor?.let { "&cursor=" + URLEncoder.encode(it, "UTF-8") } ?: "")
                         )
                     }

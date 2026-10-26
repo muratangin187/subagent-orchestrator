@@ -376,3 +376,23 @@ ilerlerken başka konulara geçebilir, sonuçları aynı sohbetten takip edebili
 > Bilgisayar açık ve erişilebilir olmalı. Sesli görüşme sırayla konuşma/yanıt alma
 > şeklindedir; tam çift yönlü değildir. ElevenLabs ses ve yanıt metnini işler.
 > Slack/e-posta entegrasyon profilleri henüz uygulamaya taşınmadı.
+
+### 👓 Even G2 companion
+
+A separate Even Hub app brings the same persistent assistant to **Even G2 smart glasses**: explicit voice capture, paginated replies, active jobs, managed sessions and contextual task follow-up. Its phone companion supports text, attachments and Codex/Claude sessions.
+
+Built with the official SDK, with a repeatable simulator flow and separate tests. **Physical G2 / beta lock-screen validation is still required**; G2 has no speaker or camera. No account keys ship in the plugin.
+
+[Get started with G2 →](docs/even-g2.md) · [App source](apps/even-g2)
+
+### 🖥️ macOS desktop
+
+**A bigger workspace for the same assistant.** A dedicated Electron app combines a persistent navigation sidebar, Markdown conversation, and live task inspector. Browse Codex/Claude sessions, open new work, follow child agents, attach files, and use the server's voice configuration.
+
+Local-first connection storage stays in the main process and is encrypted with macOS-backed safeStorage. This initial desktop build is ad-hoc signed and requires the existing Workspace server. See the guide for voice, preview and notification limits.
+
+[Desktop setup and shortcuts →](apps/desktop/README.md) · [Source](apps/desktop)
+
+## Multi-device workspace
+
+Keep your assistant on an always-on computer and send individual sessions or nested agents to another computer over SSH. Android, macOS and Even G2 share the same history and device registry. Children inherit their parent’s device; uncertain disconnects require explicit recovery. See [multi-device setup and migration](docs/multi-device.md).

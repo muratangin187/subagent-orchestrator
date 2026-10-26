@@ -1,0 +1,24 @@
+{
+  "package_id": "dev.agentworkspace.glasses",
+  "name": "Agent Workspace",
+  "version": "0.1.0",
+  "edition": "202601",
+  "min_sdk_version": "0.0.16",
+  "entrypoint": "index.html",
+  "permissions": [
+    {
+      "name": "network",
+      "desc": "Connect to your own Agent Workspace server over Tailscale.",
+      "whitelist": [
+        "https://workspace.example.invalid"
+      ]
+    },
+    {
+      "name": "g2-microphone",
+      "desc": "Send a voice message to your personal assistant only when you start recording."
+    }
+  ],
+  "supported_languages": [
+    "en"
+  ]
+}

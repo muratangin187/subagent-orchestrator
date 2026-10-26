@@ -26,6 +26,7 @@ export interface ProviderFailure {
   action: "Wait for provider availability, then send an explicit continuation. Report this failure to the user.";
 }
 export interface Task {
+  deviceId?: string;
   conversationKind?: "assistant" | "session";
   instructions?: string;
   id: string;
@@ -85,7 +86,7 @@ export interface Driver {
   interrupt(): Promise<void>;
   close(): Promise<void>;
 }
-export type DriverFactory = (provider: Provider) => Driver;
+export type DriverFactory = (provider: Provider, task?: Task) => Driver;
 export class OrchestratorError extends Error {
   constructor(
     public code: string,

@@ -133,6 +133,11 @@ export class VoiceService {
       .object({
         clientRequestId: z.string().uuid(),
         audio: z.string().min(100).max(1_300_000),
+        contextTaskId: z.string().uuid().optional(),
+        deviceId: z
+          .string()
+          .regex(/^[a-z0-9][a-z0-9_-]{0,39}$/)
+          .optional(),
       })
       .strict()
       .parse(body);
@@ -140,13 +145,25 @@ export class VoiceService {
     if (audio.length < 3200 || audio.length > 960000 || audio.length % 2)
       throw Error("Ses kaydı 0,1–30 saniye, 16 kHz mono PCM olmalı.");
     const db = this.controller.store.db;
-    const hash = createHash("sha256").update(audio).digest("hex");
+    if (a.contextTaskId)
+      this.controller.engine.status(this.controller.scope, a.contextTaskId);
+    if (a.deviceId) {
+      if (!this.controller.engine.devices)
+        throw Error("Device routing is not configured");
+      this.controller.engine.devices.get(a.deviceId);
+    }
+    const hash = createHash("sha256")
+      .update(audio)
+      .update(a.contextTaskId ?? "")
+      .update(a.deviceId ? "device:" + a.deviceId : "")
+      .digest("hex");
     const prior = db
       .prepare("SELECT * FROM workspace_voice_requests WHERE id=?")
       .get(a.clientRequestId) as any;
     if (prior) {
       if (prior.hash !== hash) throw Error("Voice request payload conflict");
       if (prior.state === "done") return JSON.parse(prior.result);
+      if (prior.state === "rejected") throw Error(prior.result);
       throw Error(
         "Bu ses isteğinin sonucu belirsiz; otomatik tekrar yapılmadı.",
       );
@@ -168,7 +185,16 @@ export class VoiceService {
       const r = (await (
         await this.request("/v1/speech-to-text", { method: "POST", body: data })
       ).json()) as any;
-      const text = z.string().trim().min(1).max(6000).parse(r.text);
+      const parsed = z.string().trim().max(6000).safeParse(r.text);
+      if (!parsed.success || !parsed.data) {
+        const message =
+          "Konuşma algılanamadı. Mikrofonu kontrol edip daha net konuşarak yeniden dene.";
+        db.prepare(
+          "UPDATE workspace_voice_requests SET state='rejected',result=? WHERE id=?",
+        ).run(message, a.clientRequestId);
+        throw Error(message);
+      }
+      const text = parsed.data;
       const result = this.controller.submit({
         id: "voice:" + a.clientRequestId,
         target: "assistant",
@@ -177,6 +203,12 @@ export class VoiceService {
         displayText: text,
         body:
           text +
+          (a.deviceId && !a.contextTaskId
+            ? `\n\n[The user selected execution device ${a.deviceId} for new delegated work. Keep the assistant on its coordinator; pass deviceId to new child tasks.]`
+            : "") +
+          (a.contextTaskId
+            ? `\n\n[The user is viewing task ${a.contextTaskId}. Interpret this voice message in that task's context; route it through the existing child tools when appropriate.]`
+            : "") +
           "\n\n[Voice reply preference: respond briefly in natural Turkish suitable for speech. Delegate long work asynchronously and acknowledge briefly. Do not wait for children.]",
       });
       db.prepare(

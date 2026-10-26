@@ -193,6 +193,27 @@ export class Store {
       nextOffset: rows.at(-1)?.id ?? offset,
     };
   }
+  eventsBefore(id: string, before: number, limit: number) {
+    const rows = this.db
+      .prepare(
+        "SELECT id,run_id AS runId,type,data,created FROM events WHERE task_id=? AND id<? ORDER BY id DESC LIMIT ?",
+      )
+      .all(id, before, limit)
+      .reverse() as {
+      id: number;
+      runId: string;
+      type: string;
+      data: string;
+      created: number;
+    }[];
+    return {
+      messages: rows.map(({ data, ...row }) => ({
+        ...row,
+        payload: JSON.parse(data),
+      })),
+      nextOffset: rows.at(-1)?.id ?? 0,
+    };
+  }
   notify(t: Task) {
     this.db.prepare("INSERT INTO notifications(owner,data) VALUES(?,?)").run(
       t.owner,
