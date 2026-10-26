@@ -1393,7 +1393,7 @@ function App() {
                 </form>
               )}
               <div className="composer-wrap">
-                {!external && (
+                {!external && !(progress.kind === "idle" && task?.status === "completed") && (
                   <div
                     className={"chat-progress " + progress.kind}
                     role="status"
