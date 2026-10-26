@@ -148,3 +148,23 @@ edits. It does not acquire a shared repository writer slot; ordinary writing
 sessions continue to serialize. Child completion/questions return as later turns.
 Android retrieves all event pages, then resumes after the last received event;
 long conversations no longer stop at the first 4,000 events.
+
+### Models, reasoning and dictation
+
+Choose a model and its reasoning level in the composer on Android or macOS. The
+list comes from the selected execution computer's installed providers; unavailable
+models are not silently substituted. The choice applies when you send the next
+message, after any current turn finishes. Other clients see the applied choice
+when the next turn starts.
+
+Switching Codex ↔ Claude opens a fresh native session with bounded recent chat
+history and child-task references. The app conversation and child ownership stay
+the same. Switching models within one provider resumes that provider's session.
+A handoff does not replay completed tools or restart children. Older context may
+be omitted; it is not a byte-for-byte migration of native provider history.
+
+**Dikte** records speech and appends its transcription to your draft. It never
+sends the draft automatically. Review/edit the text, then send it yourself. On
+Android, a pause ends the recording; on desktop, use **Dikteyi bitir**. Leaving
+the app cancels recording. **Sesli asistan** remains the separate conversational
+voice flow. Both use the existing server-side ElevenLabs connection.

@@ -140,6 +140,27 @@ class VoiceModel(app: Application) : AndroidViewModel(app) {
         update { it.copy(active = false, phase = "Hazır", level = 0f) }
     }
 
+    fun dictate(onText: (String) -> Unit) {
+        if (state.value.active) return
+        if (getApplication<Application>().checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            update { it.copy(error = "Mikrofon izni gerekiyor.") }; return
+        }
+        val token = ++generation
+        update { it.copy(active = true, muted = false, phase = "Dikte dinleniyor", error = null) }
+        session = viewModelScope.launch {
+            try {
+                val bytes = capture() ?: throw IllegalStateException("Konuşma algılanamadı.")
+                update { it.copy(phase = "Yazıya çevriliyor", level = 0f) }
+                val result = withContext(Dispatchers.IO) { repo.request("/v1/voice/transcribe", JSONObject()
+                    .put("clientRequestId", UUID.randomUUID().toString())
+                    .put("audio", Base64.encodeToString(bytes, Base64.NO_WRAP)).put("draftOnly", true)) }
+                if (token == generation) onText(result.getString("text"))
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { update { it.copy(error = e.message) } }
+            finally { if (token == generation) update { it.copy(active = false, phase = "Hazır", level = 0f) } }
+        }
+    }
+
     fun start() {
         if (state.value.active) return
         if (

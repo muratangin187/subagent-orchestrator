@@ -178,3 +178,16 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
   color: var(--fg);
   border: 1px solid var(--control);
 }
+
+.composer-tools { flex-wrap: wrap; gap: 8px; }
+.model-controls { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.model-controls select { width: auto; max-width: 120px; border: 0; background: transparent; color: var(--muted); }
+.model-picker { position: relative; }
+.model-picker > button { max-width: 220px; }
+.model-picker > button span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.model-menu { position: absolute; bottom: calc(100% + 12px); left: 0; width: min(340px, 75vw); max-height: 350px; overflow-y: auto; background: var(--surface); border: 1px solid var(--control); border-radius: 12px; padding: 8px; box-shadow: 0 12px 32px #0003; z-index: 30; }
+.model-menu label { display: flex; gap: 8px; align-items: center; padding: 8px; }
+.model-menu input { min-width: 0; width: 100%; }
+.model-menu > button { display: flex; text-align: left; width: 100%; padding: 10px; }
+.model-menu small { display: block; color: var(--muted); margin-top: 4px; }
+.model-menu button[aria-pressed="true"] { background: var(--accent-soft); }

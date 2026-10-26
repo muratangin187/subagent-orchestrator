@@ -42,6 +42,8 @@ export class ClaudeDriver implements Driver {
   private current?: Query;
   private abort = new AbortController();
   async run(ctx: RunContext): Promise<string> {
+    const effort = ctx.task.effort;
+    if (effort === "ultra") throw Error("Claude does not support ultra effort");
     const readOnly =
       ctx.task.interactionMode === "plan" ||
       ctx.task.runtimeMode === "read-only" ||
@@ -60,7 +62,7 @@ export class ClaudeDriver implements Driver {
       options: {
         cwd: ctx.task.cwd,
         model: ctx.task.model,
-        effort: ctx.task.effort,
+        effort,
         resume: ctx.task.sessionId,
         abortController: this.abort,
         pathToClaudeCodeExecutable:

@@ -69,6 +69,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
     var nativeSelection: JSONObject? = null
         private set
 
+    val selections = mutableMapOf<String, JSONObject>()
     var newDeviceId = ""
     var newProvider = "codex"
     var newModel = ""
@@ -253,6 +254,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                         val type = e.optString("type")
                         val line =
                             when (type) {
+                                "provider_handoff" -> ChatLine(e.optString("id"), "system", "${payload.optJSONObject("previous")?.optString("provider")} → ${payload.optJSONObject("selection")?.optString("provider")} · Sohbet bağlamı yeni oturuma aktarıldı.")
                                 "task_created" ->
                                     ChatLine(e.optString("id"), "user", payload.optString("task"))
                                 "message_queued" ->
@@ -368,6 +370,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                 .put("text", value)
                 .put("provider", native?.optString("provider") ?: newProvider)
                 .put("attachments", JSONArray(state.value.attached.map { it.first }))
+        selections[selected]?.let { body.put("selection", it) }
         if (selected == "new" || native != null) body.put("deviceId", native?.optString("deviceId")?.takeIf { it.isNotBlank() } ?: newDeviceId.ifBlank { state.value.snapshot.optString("defaultDeviceId", "local") })
         if (newModel.isNotBlank()) body.put("model", newModel)
         if (native != null)

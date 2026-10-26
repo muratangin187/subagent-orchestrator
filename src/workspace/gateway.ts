@@ -1,3 +1,5 @@
+import { modelCatalog } from "../providers/catalog.js";
+import { selectionSchema } from "../schema.js";
 import { activityPatches } from "./activity.js";
 import { deviceQuery } from "../devices/query.js";
 import { createServer, type Server } from "node:http";
@@ -34,6 +36,7 @@ const message = z
     text: z.string().trim().min(1).max(60000),
     provider: z.enum(["codex", "claude"]).default("codex"),
     model: z.string().max(100).optional(),
+    selection: selectionSchema.optional(),
     title: z.string().max(100).optional(),
     nativeId: z.string().uuid().optional(),
     confirmExternal: z.boolean().optional(),
@@ -277,7 +280,21 @@ export async function startGateway(
       }
       if (req.method === "GET" && url.pathname === "/v1/models") {
         const { CodexDriver } = await import("../providers/codex.js");
-        send(200, await CodexDriver.models());
+        if (url.searchParams.get("catalog") === "true") {
+          const deviceId =
+            url.searchParams.get("deviceId") ||
+            controller.engine.devices?.config.localId;
+          const remote =
+            deviceId && controller.engine.devices?.remote(deviceId);
+          send(
+            200,
+            remote
+              ? await deviceQuery(controller.engine.devices!.get(deviceId!), {
+                  op: "models",
+                })
+              : await modelCatalog(),
+          );
+        } else send(200, await CodexDriver.models());
         return;
       }
       if (req.method === "GET" && url.pathname === "/v1/messages") {
@@ -470,6 +487,39 @@ export async function startGateway(
             : url.pathname.split("/")[3]!;
         if (target !== "assistant" && target !== "new")
           controller.engine.status(controller.scope, target);
+        if (a.selection) {
+          if (a.nativeId && a.selection.provider !== a.provider)
+            throw Error("Import the native session before switching providers");
+          const existingId =
+            target === "assistant"
+              ? controller.get("assistant")
+              : target === "new"
+                ? undefined
+                : target;
+          const deviceId = existingId
+            ? controller.store.task(existingId).deviceId
+            : (a.deviceId ?? controller.engine.devices?.config.localId);
+          const catalog =
+            deviceId && controller.engine.devices?.remote(deviceId)
+              ? await deviceQuery(controller.engine.devices!.get(deviceId), {
+                  op: "models",
+                })
+              : await modelCatalog();
+          const chosen = catalog.models.find(
+            (m: any) =>
+              m.provider === a.selection!.provider &&
+              m.model === a.selection!.model,
+          );
+          if (!chosen)
+            throw Error(
+              "Model bu cihazın canlı kataloğunda bulunamadı. Listeyi yenileyin.",
+            );
+          if (
+            a.selection.effort &&
+            !chosen.efforts.includes(a.selection.effort)
+          )
+            throw Error("Model bu reasoning seviyesini desteklemiyor.");
+        }
         if (a.nativeId && !a.confirmExternal)
           throw Error(
             "Confirm the external terminal turn is stopped before resuming",
@@ -568,6 +618,7 @@ export async function startGateway(
               : ""),
           provider: isAssistant ? "codex" : a.provider,
           model: isAssistant ? undefined : a.model,
+          selection: a.selection,
           kind: isAssistant ? "assistant" : "session",
           nativeId: a.nativeId,
           cwd: nativeCwd,

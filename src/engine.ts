@@ -1,3 +1,5 @@
+import { handoffContext } from "./handoff.js";
+import type { ModelSelection } from "./types.js";
 import type { Devices } from "./devices/registry.js";
 import { classifyFailure } from "./providers/failure.js";
 import { fileURLToPath } from "node:url";
@@ -231,11 +233,13 @@ export class Engine {
             this.store.command(commandId, t.id, "queued", {
               message: a.message,
               mode: a.mode,
+              selection: a.selection,
             });
             this.store.event(t, "message_queued", {
               commandId,
               message: a.message,
               mode: a.mode,
+              selection: a.selection,
             });
             return { taskId: t.id, commandId, accepted: true };
           },
@@ -566,7 +570,8 @@ export class Engine {
       const active = this.active.get(t.id);
       if (
         active &&
-        (cmd.data.mode === "queue" ||
+        (cmd.data.selection ||
+          cmd.data.mode === "queue" ||
           (cmd.data.mode === "auto" && t.provider !== "codex"))
       )
         continue;
@@ -624,7 +629,7 @@ export class Engine {
   private async processCommand(cmd: {
     id: string;
     taskId: string;
-    data: { message: string; mode: string };
+    data: { message: string; mode: string; selection?: ModelSelection };
   }) {
     this.store.command(cmd.id, cmd.taskId, "dispatching", cmd.data);
     try {
@@ -647,15 +652,30 @@ export class Engine {
           this.store.command(cmd.id, t.id, "cancelled", cmd.data);
           return;
         }
+        const selection = cmd.data.selection;
+        const switched = selection && selection.provider !== t.provider;
+        const context = switched ? handoffContext(this.store, t) : "";
+        const previous = {
+          provider: t.provider,
+          model: t.model,
+          sessionId: t.sessionId,
+          effort: t.effort,
+        };
         const r: Run = {
           id: randomUUID(),
           taskId: t.id,
           ordinal: this.store.runs(t.id).length + 1,
           status: "pending",
-          prompt: cmd.data.message,
+          prompt: context + cmd.data.message,
           createdAt: Date.now(),
         };
         this.store.transaction(() => {
+          if (selection) {
+            t.provider = selection.provider;
+            t.model = selection.model;
+            t.effort = selection.effort;
+            if (switched) delete t.sessionId;
+          }
           t.runId = r.id;
           t.status = "pending";
           delete t.question;
@@ -664,6 +684,17 @@ export class Engine {
           delete t.resultSummary;
           this.store.saveRun(r);
           this.touch(t);
+          if (selection)
+            this.store.event(
+              t,
+              switched ? "provider_handoff" : "model_changed",
+              {
+                previous,
+                selection,
+                strategy: switched ? "fresh_session_with_history" : "resume",
+                contextCharacters: context.length,
+              },
+            );
           this.store.event(t, "user_message", {
             message: cmd.data.message,
             commandId: cmd.id,

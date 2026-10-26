@@ -9,6 +9,15 @@ export const runtime = z.enum([
 ]);
 const taskId = z.string().uuid();
 const request = { clientRequestId: key.optional() };
+export const selectionSchema = z
+  .object({
+    provider: z.enum(["codex", "claude"]),
+    model: key,
+    effort: z
+      .enum(["low", "medium", "high", "xhigh", "max", "ultra"])
+      .optional(),
+  })
+  .strict();
 export const delegateSchema = z
   .object({
     deviceId: z
@@ -20,7 +29,9 @@ export const delegateSchema = z
     task: text,
     provider: z.enum(["claude", "codex"]).optional(),
     model: key.optional(),
-    effort: z.enum(["low", "medium", "high", "xhigh"]).optional(),
+    effort: z
+      .enum(["low", "medium", "high", "xhigh", "max", "ultra"])
+      .optional(),
     title: z.string().max(200).optional(),
     role: z
       .enum([
@@ -46,6 +57,7 @@ export const schemas = {
     .object({
       taskId,
       message: text,
+      selection: selectionSchema.optional(),
       mode: z
         .enum(["auto", "steer", "queue", "interrupt_and_restart"])
         .default("auto"),

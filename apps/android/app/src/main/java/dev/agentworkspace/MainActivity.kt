@@ -107,6 +107,23 @@ fun WorkspaceApp(model: WorkspaceModel) {
         model.repo.local.put("draft:" + model.selected, value)
     }
     val voiceModel: VoiceModel = viewModel()
+    val dictationState by voiceModel.state.collectAsStateWithLifecycle()
+    val voiceLifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(voiceLifecycle) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) voiceModel.stop() }
+        voiceLifecycle.addObserver(observer)
+        onDispose { voiceLifecycle.removeObserver(observer); voiceModel.stop() }
+    }
+    fun dictate() {
+        val target = model.selected
+        voiceModel.dictate { text ->
+            val old = model.repo.local.get("draft:" + target) ?: ""
+            val next = listOf(old, text).filter { it.isNotBlank() }.joinToString(" ")
+            model.repo.local.put("draft:" + target, next)
+            if (model.selected == target) changeDraft(next)
+        }
+    }
+    val dictatePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed -> if (allowed) dictate() else model.showError("Dikte için mikrofon izni gerekiyor.") }
     var showVoice by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var settingsFromVoice by remember { mutableStateOf(false) }
@@ -404,6 +421,15 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                 )
                                 TextButton(onClick = model::cancelPending) { Text("Kuyruğu sil") }
                             }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (model.nativeSelection == null) ModelControls(model, s.snapshot, Modifier.weight(1f))
+                            TextButton(onClick = { if (dictationState.active) voiceModel.stop() else dictatePermission.launch(android.Manifest.permission.RECORD_AUDIO) }) {
+                                Icon(Icons.Default.Mic, null)
+                                Text(if (dictationState.active) "Vazgeç" else "Dikte")
+                            }
+                        }
+                        if (dictationState.active && !showVoice) Text(dictationState.phase, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.labelSmall)
+                        if (dictationState.error != null && !showVoice) Text(dictationState.error!!, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
                         Row(
                             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.Bottom,

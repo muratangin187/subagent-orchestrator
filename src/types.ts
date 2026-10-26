@@ -25,6 +25,11 @@ export interface ProviderFailure {
   automaticRetry: false;
   action: "Wait for provider availability, then send an explicit continuation. Report this failure to the user.";
 }
+export interface ModelSelection {
+  provider: Provider;
+  model: string;
+  effort?: "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+}
 export interface Task {
   deviceId?: string;
   conversationKind?: "assistant" | "session";
@@ -36,7 +41,7 @@ export interface Task {
   depth: number;
   provider: Provider;
   model?: string;
-  effort?: "low" | "medium" | "high" | "xhigh";
+  effort?: "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
   title: string;
   role: string;
   cwd: string;

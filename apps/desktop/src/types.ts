@@ -6,6 +6,8 @@ export type Task = {
   title?: string;
   task?: string;
   provider: string;
+  model?: string;
+  effort?: string;
   status: string;
   parentTaskId?: string;
   conversationKind?: string;

@@ -1,3 +1,4 @@
+import { modelCatalog } from "../providers/catalog.js";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { CodexDriver } from "../providers/codex.js";
@@ -43,6 +44,7 @@ export async function worker() {
         let result: any;
         if (q.op === "health")
           result = { online: true, platform: process.platform };
+        else if (q.op === "models") result = await modelCatalog();
         else if (q.op === "native")
           result = await nativeList(
             z.enum(["codex", "claude"]).parse(q.provider),

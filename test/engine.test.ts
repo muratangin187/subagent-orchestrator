@@ -15,10 +15,12 @@ const scope: Scope = {
 const tick = () => new Promise((r) => setTimeout(r, 15));
 class Fake implements Driver {
   context?: RunContext;
+  resumedSession?: string;
   resolve?: (s: string) => void;
   reject?: (e: Error) => void;
   steers: string[] = [];
   run(ctx: RunContext) {
+    this.resumedSession = ctx.task.sessionId;
     this.context = ctx;
     ctx.session("native-session");
     return new Promise<string>((resolve, reject) => {
@@ -599,6 +601,75 @@ test("assistant follow-up runs while a shared child is active, ordinary writers 
     await assert.rejects(
       s.engine.call(childScope, "wait_for_task", { taskId: child.taskId }),
       /Assistant must delegate async/,
+    );
+  } finally {
+    await s.close();
+  }
+});
+
+test("provider handoff queues behind the active turn, preserves task and children, never cross-resumes native IDs", async () => {
+  const s = setup();
+  try {
+    const t = await delegate(s.engine, { provider: "codex" });
+    await tick();
+    const parent = s.store.task(t.taskId);
+    const originalSession = parent.sessionId;
+    const c = (await s.engine.call(
+      { ...scope, id: `child:${t.taskId}`, parentTaskId: t.taskId },
+      "delegate_task",
+      { task: "child" },
+    )) as any;
+    await tick();
+    await s.engine.call(scope, "send_to_subagent", {
+      taskId: t.taskId,
+      message: "switch question",
+      mode: "auto",
+      selection: { provider: "claude", model: "test-claude", effort: "high" },
+      clientRequestId: "switch-1",
+    });
+    assert.equal(s.store.task(t.taskId).provider, "codex");
+    s.drivers[0]!.context!.event({
+      type: "assistant_message",
+      payload: { text: "Prior answer", id: "a" },
+    });
+    s.drivers[0]!.resolve!("Prior answer");
+    await tick();
+    await tick();
+    const next = s.store.task(t.taskId);
+    assert.equal(
+      s.drivers.find(
+        (d) => d.context?.task.id === t.taskId && d !== s.drivers[0],
+      )!.resumedSession,
+      undefined,
+    );
+    assert.equal(next.provider, "claude");
+    assert.equal(next.effort, "high");
+    assert.equal(s.store.task(c.taskId).parentTaskId, t.taskId);
+    const handoff = s.store
+      .events(t.taskId, 0, 200)
+      .messages.find((e) => e.type === "provider_handoff")!;
+    assert.equal(handoff.payload.previous.sessionId, originalSession);
+    const prompt = s.store.run(next.runId).prompt;
+    assert.match(prompt, /Prior answer/);
+    assert.match(prompt, /child/);
+    assert.equal(prompt.split("switch question").length - 1, 1);
+    s.drivers.find(
+      (d) => d.context?.task.id === t.taskId && d !== s.drivers[0],
+    )!.resolve!("switched");
+    await tick();
+    await s.engine.call(scope, "send_to_subagent", {
+      taskId: t.taskId,
+      message: "same provider",
+      mode: "queue",
+      selection: { provider: "claude", model: "another-model" },
+    });
+    await tick();
+    await tick();
+    assert.equal(
+      s.store
+        .events(t.taskId, 0, 200)
+        .messages.filter((e) => e.type === "provider_handoff").length,
+      1,
     );
   } finally {
     await s.close();

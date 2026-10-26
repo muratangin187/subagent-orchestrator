@@ -133,6 +133,7 @@ export class VoiceService {
       .object({
         clientRequestId: z.string().uuid(),
         audio: z.string().min(100).max(1_300_000),
+        draftOnly: z.boolean().default(false),
         contextTaskId: z.string().uuid().optional(),
         deviceId: z
           .string()
@@ -154,6 +155,7 @@ export class VoiceService {
     }
     const hash = createHash("sha256")
       .update(audio)
+      .update(a.draftOnly ? "draft" : "")
       .update(a.contextTaskId ?? "")
       .update(a.deviceId ? "device:" + a.deviceId : "")
       .digest("hex");
@@ -195,22 +197,24 @@ export class VoiceService {
         throw Error(message);
       }
       const text = parsed.data;
-      const result = this.controller.submit({
-        id: "voice:" + a.clientRequestId,
-        target: "assistant",
-        provider: "codex",
-        kind: "assistant",
-        displayText: text,
-        body:
-          text +
-          (a.deviceId && !a.contextTaskId
-            ? `\n\n[The user selected execution device ${a.deviceId} for new delegated work. Keep the assistant on its coordinator; pass deviceId to new child tasks.]`
-            : "") +
-          (a.contextTaskId
-            ? `\n\n[The user is viewing task ${a.contextTaskId}. Interpret this voice message in that task's context; route it through the existing child tools when appropriate.]`
-            : "") +
-          "\n\n[Voice reply preference: respond briefly in natural Turkish suitable for speech. Delegate long work asynchronously and acknowledge briefly. Do not wait for children.]",
-      });
+      const result = a.draftOnly
+        ? { text }
+        : this.controller.submit({
+            id: "voice:" + a.clientRequestId,
+            target: "assistant",
+            provider: "codex",
+            kind: "assistant",
+            displayText: text,
+            body:
+              text +
+              (a.deviceId && !a.contextTaskId
+                ? `\n\n[The user selected execution device ${a.deviceId} for new delegated work. Keep the assistant on its coordinator; pass deviceId to new child tasks.]`
+                : "") +
+              (a.contextTaskId
+                ? `\n\n[The user is viewing task ${a.contextTaskId}. Interpret this voice message in that task's context; route it through the existing child tools when appropriate.]`
+                : "") +
+              "\n\n[Voice reply preference: respond briefly in natural Turkish suitable for speech. Delegate long work asynchronously and acknowledge briefly. Do not wait for children.]",
+          });
       db.prepare(
         "UPDATE workspace_voice_requests SET state='done',result=? WHERE id=?",
       ).run(JSON.stringify(result), a.clientRequestId);

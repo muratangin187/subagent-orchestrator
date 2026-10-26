@@ -1,3 +1,4 @@
+import { ModelPicker, type Selection } from "./ModelPicker";
 import {
   transferredFiles,
   validateAttachments,
@@ -183,6 +184,8 @@ function App() {
     } | null>(null),
     voiceGeneration = useRef(0),
     lock = useRef(false);
+  const dictation = useRef<{ target: string } | null>(null);
+  const [selections, setSelections] = useState<Record<string, Selection>>({});
   const task = snap.tasks.find(
     (t) => t.id === (selected === "assistant" ? snap.assistantId : selected),
   );
@@ -530,6 +533,7 @@ function App() {
       clientRequestId: uid(),
       text: draft.trim(),
       attachments,
+      selection: selections[pick],
       ...(external ? { deviceId: external.deviceId } : {}),
     };
     let p =
@@ -750,7 +754,8 @@ function App() {
     };
   }, [modal, speakerMuted]);
 
-  async function startVoice() {
+  async function startVoice(draftOnly = false) {
+    dictation.current = draftOnly ? { target: selection.current } : null;
     if (capture.current || voiceState === "starting") return;
     const generation = ++voiceGeneration.current;
     setError("");
@@ -873,6 +878,7 @@ function App() {
       return;
     }
     const generation = voiceGeneration.current;
+    const draftTarget = dictation.current?.target;
     setVoiceState("sending");
     const pcm = new Int16Array(s.count);
     let offset = 0;
@@ -887,14 +893,26 @@ function App() {
     request("/v1/voice/transcribe", {
       clientRequestId: uid(),
       audio: btoa(binary),
+      draftOnly: !!draftTarget,
       contextTaskId:
         selection.current === "assistant" ||
         selection.current.startsWith("native:")
           ? undefined
           : selection.current,
     })
-      .then(() => {
+      .then((result) => {
         if (generation !== voiceGeneration.current) return;
+        if (draftTarget) {
+          setDrafts((d) => ({
+            ...d,
+            [draftTarget]: [d[draftTarget], result.text]
+              .filter(Boolean)
+              .join(" "),
+          }));
+          setVoiceState("idle");
+          dictation.current = null;
+          return;
+        }
         setVoiceState("sent");
         void refresh();
       })
@@ -1593,6 +1611,43 @@ function App() {
                     </div>
                   )}
                   <div className="composer-tools">
+                    {!external && (
+                      <ModelPicker
+                        deviceId={task?.deviceId || snap.localDeviceId}
+                        value={
+                          selections[selected] ||
+                          (task?.model
+                            ? {
+                                provider: task.provider as "codex" | "claude",
+                                model: task.model,
+                                effort: task.effort,
+                              }
+                            : undefined)
+                        }
+                        onChange={(value) =>
+                          setSelections((s) => ({ ...s, [selected]: value }))
+                        }
+                      />
+                    )}
+                    <button
+                      type="button"
+                      aria-label="Dikte — taslağa yaz"
+                      disabled={
+                        voiceState === "sending" || voiceState === "starting"
+                      }
+                      onClick={() =>
+                        voiceState === "recording"
+                          ? stopVoice(true)
+                          : void startVoice(true)
+                      }
+                    >
+                      <Mic size={16} />
+                      {voiceState === "recording"
+                        ? "Dikteyi bitir"
+                        : voiceState === "sending"
+                          ? "Yazıya çevriliyor…"
+                          : "Dikte"}
+                    </button>
                     <div>
                       <input
                         ref={fileInput}
@@ -1618,6 +1673,7 @@ function App() {
                         type="button"
                         className="voice-button"
                         onClick={() => {
+                          stopVoice(false);
                           setModal("voice");
                           setVoiceState("idle");
                         }}

@@ -13,6 +13,7 @@ type Input = {
   state: string;
   provider: Provider;
   model?: string;
+  selection?: import("../types.js").ModelSelection;
   nativeId?: string;
   kind: "assistant" | "session";
   title?: string;
@@ -216,8 +217,10 @@ export class WorkspaceController {
                 input.kind === "assistant"
                   ? this.engine.devices?.config.localId
                   : input.deviceId,
-              provider: input.provider,
+              provider: input.selection?.provider ?? input.provider,
+              effort: input.selection?.effort,
               model:
+                input.selection?.model ??
                 input.model ??
                 (input.kind === "assistant" ? this.model : undefined),
               title: input.kind === "assistant" ? "Asistan" : input.title,
@@ -243,6 +246,7 @@ export class WorkspaceController {
             await this.engine.call(this.scope, "send_to_subagent", {
               taskId: id,
               message: input.body,
+              selection: input.selection,
               mode: "queue",
               clientRequestId: `mobile-send:${input.id}`,
             });

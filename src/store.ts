@@ -290,7 +290,11 @@ export class Store {
         .all(state) as { id: string; taskId: string; data: string }[]
     ).map((r) => ({
       ...r,
-      data: JSON.parse(r.data) as { message: string; mode: string },
+      data: JSON.parse(r.data) as {
+        message: string;
+        mode: string;
+        selection?: import("./types.js").ModelSelection;
+      },
     }));
   }
   close() {

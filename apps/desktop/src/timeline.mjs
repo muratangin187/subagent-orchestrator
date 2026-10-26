@@ -49,7 +49,9 @@ export function projectMessages(events) {
   for (const e of events) {
     const p = e.payload || {},
       base = { id: String(e.id), runId: e.runId };
-    if (e.type === "assistant_message") {
+    if (e.type === "provider_handoff") {
+      messages.push({...base,role:"system",text:`${p.previous?.provider} → ${p.selection?.provider} · Sohbet bağlamı yeni oturuma aktarıldı.`});
+    } else if (e.type === "assistant_message") {
       const text =
         p.text ??
         (p.content || [])

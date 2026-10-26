@@ -4,6 +4,7 @@ window.desktop={
  connection:async()=>({connected:true,origin:'https://isolated-fixture.invalid'}),
  onCommand:()=>()=>{},notify:async()=>{},copyText:async()=>{},
  request:async(path,body)=>{
+  if(path.startsWith('/v1/models')) return {models:[{provider:'codex',model:'fixture-codex',label:'Codex fixture',efforts:['low','medium','high','xhigh','max']},{provider:'claude',model:'fixture-claude',label:'Claude fixture',efforts:['low','medium','high']}],errors:{}};
   if(path==='/v1/state')return {tasks:[],inputs:[],assistantId:'fixture-assistant',devices:[]};
   if(path.startsWith('/v1/messages'))return {messages:[],nextOffset:0};
   if(path==='/v1/upload'){window.qaUploads.push(body);return {id:body.id,name:body.name};}

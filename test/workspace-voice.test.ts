@@ -266,3 +266,44 @@ test("voice device selection validates registry and remains bound to request ide
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("dictation only returns a draft, never submits a task, and cannot be retried as auto-send", async () => {
+  const home = mkdtempSync(join(tmpdir(), "dictation-")),
+    store = new Store(join(home, "state.sqlite"));
+  let submitted = 0;
+  const c: any = {
+    store,
+    get: () => undefined,
+    submit: () => {
+      submitted++;
+    },
+  };
+  const voice = new VoiceService(c, home, async (url) =>
+    Response.json(
+      String(url).includes("/voices")
+        ? { voices: [{ voice_id: "voice1", name: "Test" }] }
+        : { text: "Taslak metin" },
+    ),
+  );
+  try {
+    await voice.configure({
+      apiKey: "test-only-key-not-real",
+      voiceId: "voice1",
+    });
+    const a = {
+      clientRequestId: "32345678-1234-4234-8234-123456789abc",
+      audio: Buffer.alloc(6400, 1).toString("base64"),
+      draftOnly: true,
+    };
+    assert.deepEqual(await voice.transcribe(a), { text: "Taslak metin" });
+    assert.deepEqual(await voice.transcribe(a), { text: "Taslak metin" });
+    assert.equal(submitted, 0);
+    await assert.rejects(
+      voice.transcribe({ ...a, draftOnly: false }),
+      /conflict/,
+    );
+  } finally {
+    store.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
