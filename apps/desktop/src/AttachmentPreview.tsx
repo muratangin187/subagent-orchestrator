@@ -9,7 +9,12 @@ import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { safeHtmlDocument } from "./attachment-html.mjs";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
-export type Attachment = { id: string; name: string; content: string };
+export type Attachment = {
+  id: string;
+  name: string;
+  content: string;
+  deviceId?: string;
+};
 const bytes = (content: string) =>
   Uint8Array.from(atob(content), (c) => c.charCodeAt(0));
 
@@ -130,7 +135,7 @@ export function AttachmentPreview({ file }: { file: Attachment }) {
   const [source, setSource] = useState(false);
   if (/\.pdf$/i.test(file.name))
     return <PdfPreview key={file.id} file={file} />;
-  if (/\.(png|jpe?g|webp)$/i.test(file.name))
+  if (/\.(png|jpe?g|webp|gif)$/i.test(file.name))
     return (
       <img
         className="image-preview"

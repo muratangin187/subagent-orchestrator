@@ -26,8 +26,9 @@ import io.noties.markwon.ext.tasklist.TaskListPlugin
 
 /** Native spans: no WebView, executable HTML or automatic remote image fetching. */
 @Composable
-fun MarkdownMessage(markdown: String) {
+fun MarkdownMessage(markdown: String, onFileLink: (String) -> Unit = {}) {
     val context = LocalContext.current
+    val currentFileLink = androidx.compose.runtime.rememberUpdatedState(onFileLink)
     val foreground = LocalContentColor.current.toArgb()
     val link = MaterialTheme.colorScheme.primary.toArgb()
     val codeBackground = MaterialTheme.colorScheme.surfaceVariant.toArgb()
@@ -52,7 +53,9 @@ fun MarkdownMessage(markdown: String) {
                         override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
                             builder.linkResolver { view, destination ->
                                 val uri = Uri.parse(destination)
-                                if (uri.scheme?.lowercase() in setOf("https", "http", "mailto")) {
+                                if (destination.startsWith("/") || uri.scheme == "file") {
+                                    currentFileLink.value(destination)
+                                } else if (uri.scheme?.lowercase() in setOf("https", "http", "mailto")) {
                                     try {
                                         view.context.startActivity(Intent(Intent.ACTION_VIEW, uri))
                                     } catch (_: ActivityNotFoundException) {

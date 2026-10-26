@@ -494,3 +494,55 @@ test("explicit user message reopens cancelled assistant without reviving childre
     await s.close();
   }
 });
+
+test("local chat artifacts require auth and produce downloadable immutable snapshots", async () => {
+  const s = setup();
+  const g = await startGateway(s.c, s.home, 0);
+  try {
+    const base = `http://127.0.0.1:${(g.server.address() as any).port}`;
+    const path = join(s.c.scope.cwd, "report.html");
+    writeFileSync(path, "<h1>Report</h1>");
+    const payload = {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    };
+    assert.equal(
+      (await fetch(base + "/v1/artifacts/open", payload)).status,
+      401,
+    );
+    const headers = {
+      ...payload.headers,
+      Authorization:
+        "Bearer " + readFileSync(join(s.home, "device-secret"), "utf8").trim(),
+    };
+    const response = await fetch(base + "/v1/artifacts/open", {
+      ...payload,
+      headers,
+    });
+    assert.equal(response.status, 200);
+    const file: any = await response.json();
+    assert.equal(file.name, "report.html");
+    writeFileSync(path, "changed");
+    const download: any = await (
+      await fetch(base + "/v1/attachments/" + file.id, { headers })
+    ).json();
+    assert.equal(
+      Buffer.from(download.content, "base64").toString(),
+      "<h1>Report</h1>",
+    );
+    assert.equal(
+      (
+        await fetch(base + "/v1/artifacts/open", {
+          ...payload,
+          headers,
+          body: JSON.stringify({ path: join(s.c.scope.cwd, "missing.pdf") }),
+        })
+      ).status,
+      404,
+    );
+  } finally {
+    await g.close();
+    await s.close();
+  }
+});

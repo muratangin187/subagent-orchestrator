@@ -31,6 +31,7 @@ import androidx.webkit.WebViewAssetLoader
 import coil3.compose.AsyncImage
 import java.io.File
 import java.util.UUID
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -40,6 +41,21 @@ data class AttachmentPreview(val name: String, val file: File)
 @Composable
 fun AttachmentViewer(preview: AttachmentPreview, onClose: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val save = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        if (uri != null) scope.launch {
+            val success = withContext(Dispatchers.IO) {
+                runCatching {
+                    requireNotNull(context.contentResolver.openOutputStream(uri)).use { output ->
+                        preview.file.inputStream().use { it.copyTo(output) }
+                    }
+                }.isSuccess
+            }
+            Toast.makeText(context, if (success) "Dosya kaydedildi" else "Dosya kaydedilemedi", Toast.LENGTH_LONG).show()
+        }
+    }
     val extension = preview.name.substringAfterLast('.', "").lowercase()
     Dialog(
         onDismissRequest = onClose,
@@ -62,6 +78,7 @@ fun AttachmentViewer(preview: AttachmentPreview, onClose: () -> Unit) {
                         }
                     },
                     actions = {
+                        IconButton(onClick = { save.launch(preview.name) }) { Icon(Icons.Default.Download, "İndir") }
                         IconButton(
                             onClick = {
                                 try {
@@ -111,6 +128,7 @@ fun AttachmentViewer(preview: AttachmentPreview, onClose: () -> Unit) {
                     "png",
                     "jpg",
                     "jpeg",
+                    "gif",
                     "webp" ->
                         ZoomSurface {
                             var error by remember { mutableStateOf(false) }

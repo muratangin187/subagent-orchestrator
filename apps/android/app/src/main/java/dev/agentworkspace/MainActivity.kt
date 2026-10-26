@@ -736,7 +736,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                             .fillMaxWidth(if (line.role == "user") 0.9f else 0.96f),
                                 ) {
                                     Column(Modifier.padding(horizontal = if (line.role == "user") 16.dp else 0.dp, vertical = 12.dp)) {
-                                        MarkdownMessage(line.text)
+                                        MarkdownMessage(line.text) { path -> model.openFileLink(path, (current ?: model.nativeSelection)?.optString("deviceId")?.takeIf { it.isNotBlank() } ?: s.snapshot.optString("localDeviceId")) }
                                         RawCopyButton(line.text)
                                         line.attachments.forEach { attachment ->
                                             Spacer(Modifier.height(10.dp))

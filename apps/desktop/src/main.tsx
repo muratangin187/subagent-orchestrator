@@ -1340,6 +1340,13 @@ function App() {
                       <article className={"message " + m.role}>
                         <div className="message-body">
                           <Markdown
+                            urlTransform={(url) =>
+                              url.startsWith("file:")
+                                ? url
+                                : /^(https?:|mailto:|\/|#)/i.test(url)
+                                  ? url
+                                  : ""
+                            }
                             remarkPlugins={[remarkGfm]}
                             components={{
                               a: ({ href, children }) => (
@@ -1348,9 +1355,26 @@ function App() {
                                   onClick={(e) => {
                                     e.preventDefault();
                                     if (href)
-                                      void window.desktop
-                                        .openLink(href)
-                                        .catch(fail);
+                                      void work(async () => {
+                                        if (
+                                          href.startsWith("/") ||
+                                          href.startsWith("file:")
+                                        ) {
+                                          setPreview(
+                                            await request(
+                                              "/v1/artifacts/open",
+                                              {
+                                                path: href,
+                                                deviceId:
+                                                  task?.deviceId ||
+                                                  external?.deviceId ||
+                                                  snap.localDeviceId,
+                                              },
+                                            ),
+                                          );
+                                        } else
+                                          await window.desktop.openLink(href);
+                                      });
                                   }}
                                 >
                                   {children}

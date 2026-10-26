@@ -1,3 +1,4 @@
+import { readArtifact } from "../workspace/artifacts.js";
 import { usageLimits } from "../providers/limits.js";
 import { modelCatalog } from "../providers/catalog.js";
 import { randomUUID } from "node:crypto";
@@ -45,6 +46,11 @@ export async function worker() {
         let result: any;
         if (q.op === "health")
           result = { online: true, platform: process.platform };
+        else if (q.op === "artifact")
+          result = readArtifact(
+            z.string().max(4096).parse(q.path),
+            z.string().startsWith("/").parse(q.root),
+          );
         else if (q.op === "limits") result = await usageLimits();
         else if (q.op === "models") result = await modelCatalog();
         else if (q.op === "native")

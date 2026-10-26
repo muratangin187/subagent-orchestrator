@@ -519,6 +519,21 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
         update { it.copy(attachmentPreview = null) }
     }
 
+    fun openFileLink(path: String, deviceId: String) {
+        if (state.value.openingAttachment != null) return
+        update { it.copy(openingAttachment = path) }
+        viewModelScope.launch {
+            try {
+                val response = withContext(Dispatchers.IO) {
+                    repo.request("/v1/artifacts/open", JSONObject().put("path", path).put("deviceId", deviceId))
+                }
+                update { it.copy(openingAttachment = null) }
+                openAttachment(ChatAttachment(response.getString("id"), response.getString("name"), 0))
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { update { it.copy(openingAttachment = null, error = e.message) } }
+        }
+    }
+
     fun openAttachment(attachment: ChatAttachment) {
         if (state.value.openingAttachment != null) return
         update { it.copy(openingAttachment = attachment.id) }

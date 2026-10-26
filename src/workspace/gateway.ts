@@ -1,3 +1,4 @@
+import { readArtifact, artifactPath } from "./artifacts.js";
 import { usageLimits } from "../providers/limits.js";
 import { modelCatalog } from "../providers/catalog.js";
 import { selectionSchema } from "../schema.js";
@@ -407,6 +408,69 @@ export async function startGateway(
           })),
           status,
           olderCursor,
+        });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/v1/artifacts/open") {
+        const input = z
+          .object({
+            path: z.string().max(4096),
+            deviceId: z.string().optional(),
+          })
+          .strict()
+          .parse(body);
+        const path = artifactPath(input.path);
+        const devices = controller.engine.devices;
+        const preferred = resolveDevice(input.deviceId);
+        const candidates = preferred
+          ? [
+              preferred,
+              ...devices!.config.devices.filter((d) => d.id !== preferred.id),
+            ]
+          : [{ id: "local", cwd: controller.scope.cwd }];
+        const unavailable: string[] = [];
+        for (const d of candidates) {
+          let file: any;
+          try {
+            file = remote(d.id)
+              ? await deviceQuery(devices!.get(d.id), {
+                  op: "artifact",
+                  path,
+                  root: d.cwd,
+                })
+              : readArtifact(path, d.cwd);
+          } catch (error) {
+            unavailable.push(d.id + ": " + errorText(error));
+            continue;
+          }
+          if (file.missing) continue;
+          const id = randomUUID();
+          const name = z
+            .string()
+            .min(1)
+            .max(200)
+            .parse(file.name)
+            .replace(/[^\p{L}\p{N}._-]/gu, "_");
+          const bytes = Buffer.from(
+            z.string().max(7_000_000).parse(file.content),
+            "base64",
+          );
+          if (bytes.length > 5 * 1024 * 1024) throw Error("Dosya sınırı 5 MiB");
+          if (existsSync(uploads) && lstatSync(uploads).isSymbolicLink())
+            throw Error("Invalid attachment directory");
+          mkdirSync(uploads, { recursive: true, mode: 0o700 });
+          const cached = join(uploads, id + "-" + name);
+          writeFileSync(cached, bytes, { flag: "wx", mode: 0o600 });
+          controller.store.db
+            .prepare("INSERT INTO workspace_uploads VALUES(?,?,?)")
+            .run(id, name, cached);
+          send(200, { id, name, content: file.content, deviceId: d.id });
+          return;
+        }
+        send(404, {
+          error: unavailable.length
+            ? "Dosya açılamadı. " + unavailable.join("; ")
+            : "Dosya kayıtlı cihazların çalışma alanlarında bulunamadı.",
         });
         return;
       }
