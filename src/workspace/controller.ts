@@ -107,6 +107,20 @@ export class WorkspaceController {
       .all() as any[];
     return {
       ...this.engine.devices?.public(),
+      queuedMessages: this.store
+        .commands("queued")
+        .filter((c) => {
+          const task = this.store.task(c.taskId);
+          return (
+            task.owner === this.scope.id || task.rootOwner === this.scope.id
+          );
+        })
+        .filter((c) => c.data.mode === "queue")
+        .map((c) => ({
+          id: c.id,
+          taskId: c.taskId,
+          text: c.data.message,
+        })),
       assistantId: this.get("assistant"),
       cwd: this.scope.cwd,
       ceiling: this.scope.ceiling,

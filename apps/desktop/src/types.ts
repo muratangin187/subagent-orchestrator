@@ -25,6 +25,7 @@ export type Task = {
   };
 };
 export type Snapshot = {
+  queuedMessages?: { id: string; taskId: string; text: string }[];
   localDeviceId?: string;
   defaultDeviceId?: string;
   devices?: { id: string; name: string; cwd: string; online?: boolean }[];

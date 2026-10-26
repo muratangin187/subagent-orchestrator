@@ -1599,3 +1599,17 @@ header button {
   white-space: nowrap;
   color: var(--muted);
 }
+
+.queued-message {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  margin: 8px 0;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.queued-message span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queued-message button { flex-shrink: 0; }

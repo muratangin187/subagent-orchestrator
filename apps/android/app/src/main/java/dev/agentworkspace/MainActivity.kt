@@ -752,6 +752,13 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             }
                         }
                         workBefore[null]?.forEach { group -> item(key = group.id) { WorkActivityGroup(group) } }
+                        items((s.snapshot.optJSONArray("queuedMessages")?.objects() ?: emptyList()).filter { it.optString("taskId") == selectedId && !it.optString("text").startsWith("Background task event") }, key = { "queued:" + it.optString("id") }) { queued ->
+                            Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                                Text("Sırada · " + queued.optString("text").lineSequence().first().take(160), maxLines = 2)
+                                if (current?.optString("provider") == "codex") TextButton(onClick = { model.steerQueued(selectedId, queued.optString("id")) }) { Text("Şimdi yönlendir") }
+                            }
+                        }
+
                         if (current != null && isActiveJob(current))
                             item {
                                 Row(

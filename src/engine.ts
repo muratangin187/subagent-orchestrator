@@ -644,6 +644,61 @@ export class Engine {
     this.store.event(task, "conversation_reopened", {});
     return true;
   }
+  steerQueuedMessage(
+    scope: Scope,
+    taskId: string,
+    commandId: string,
+    clientRequestId: string,
+  ) {
+    this.owned(scope, taskId);
+    const result = this.store.receipt(
+      scope.id,
+      "workspace_steer",
+      clientRequestId,
+      { taskId, commandId },
+      () => {
+        const command = this.store
+          .commands("queued")
+          .find((c) => c.id === commandId && c.taskId === taskId);
+        if (!command)
+          throw Error("Mesaj artık kuyrukta değil; yeniden gönderilmedi.");
+        const task = this.store.task(taskId);
+        if (task.provider !== "codex")
+          throw Error(
+            "Claude aktif turda yönlendirmeyi desteklemiyor; mesaj sırada kalacak.",
+          );
+        if (
+          task.cancelled ||
+          task.question ||
+          !this.active.has(taskId) ||
+          this.processing.has(taskId)
+        )
+          throw Error(
+            "Aktif tur yönlendirmeye uygun değil; mesaj sırada kalacak.",
+          );
+        const selection = command.data.selection;
+        if (
+          selection &&
+          (selection.provider !== task.provider ||
+            selection.model !== task.model ||
+            selection.effort !== task.effort)
+        )
+          throw Error(
+            "Model değişikliği içeren mesajlar tur bittikten sonra işlenir.",
+          );
+        this.store.command(command.id, taskId, "queued", {
+          ...command.data,
+          selection: undefined,
+          mode: "steer",
+        });
+        this.store.event(task, "message_promoted", { commandId });
+        return { commandId, accepted: true };
+      },
+    );
+    this.schedule();
+    return result;
+  }
+
   private async processCommand(cmd: {
     id: string;
     taskId: string;
@@ -652,6 +707,10 @@ export class Engine {
     this.store.command(cmd.id, cmd.taskId, "dispatching", cmd.data);
     try {
       const active = this.active.get(cmd.taskId);
+      if (active && cmd.data.mode === "queue") {
+        this.store.command(cmd.id, cmd.taskId, "queued", cmd.data);
+        return;
+      }
       if (active && cmd.data.mode !== "interrupt_and_restart") {
         await active.driver.steer(cmd.data.message);
         this.store.event(this.store.task(cmd.taskId), "steered", {

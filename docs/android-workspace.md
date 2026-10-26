@@ -193,3 +193,13 @@ previews retain their isolated rendering policies; relative sibling resources
 are not fetched. The source file is not changed. A later click reads the current
 source again. Files outside a device's configured workspace must first be placed
 inside that workspace.
+
+### Queue and explicit steering
+
+Normal chat sends use `queue`: an active turn finishes before the next message
+starts. Desktop and Android show pending messages as **Sırada**. For Codex,
+**Şimdi yönlendir** promotes that existing command to `steer` without duplicating
+it. Promotion is scoped, idempotent and rejected if already dispatched, inactive,
+or requesting a model change. Claude messages remain queued; the UI does not
+silently interrupt and restart Claude. Background notifications stay queued and
+are not shown as user steering cards.

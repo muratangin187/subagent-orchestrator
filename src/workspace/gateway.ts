@@ -725,6 +725,26 @@ export async function startGateway(
         send(202, accepted);
         return;
       }
+      if (req.method === "POST" && url.pathname === "/v1/messages/steer") {
+        const a = z
+          .object({
+            taskId: z.string().uuid(),
+            commandId: z.string().uuid(),
+            clientRequestId: z.string().min(1).max(180),
+          })
+          .strict()
+          .parse(body);
+        send(
+          200,
+          controller.engine.steerQueuedMessage(
+            controller.scope,
+            a.taskId,
+            a.commandId,
+            a.clientRequestId,
+          ),
+        );
+        return;
+      }
       if (req.method === "POST" && url.pathname === "/v1/task/action") {
         const a = z
           .object({

@@ -1332,100 +1332,131 @@ function App() {
                     </div>
                   </div>
                 ) : (
-                  messages.map((m) => (
-                    <React.Fragment key={m.id}>
-                      {groupedWork.before.get(m.id)?.map((group: any) => (
-                        <WorkGroup key={group.id} run={group} />
-                      ))}
-                      <article className={"message " + m.role}>
-                        <div className="message-body">
-                          <Markdown
-                            urlTransform={(url) =>
-                              url.startsWith("file:")
-                                ? url
-                                : /^(https?:|mailto:|\/|#)/i.test(url)
+                  <>
+                    {messages.map((m) => (
+                      <React.Fragment key={m.id}>
+                        {groupedWork.before.get(m.id)?.map((group: any) => (
+                          <WorkGroup key={group.id} run={group} />
+                        ))}
+                        <article className={"message " + m.role}>
+                          <div className="message-body">
+                            <Markdown
+                              urlTransform={(url) =>
+                                url.startsWith("file:")
                                   ? url
-                                  : ""
-                            }
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                              a: ({ href, children }) => (
-                                <a
-                                  href={href}
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    if (href)
-                                      void work(async () => {
-                                        if (
-                                          href.startsWith("/") ||
-                                          href.startsWith("file:")
-                                        ) {
-                                          setPreview(
-                                            await request(
-                                              "/v1/artifacts/open",
-                                              {
-                                                path: href,
-                                                deviceId:
-                                                  task?.deviceId ||
-                                                  external?.deviceId ||
-                                                  snap.localDeviceId,
-                                              },
-                                            ),
-                                          );
-                                        } else
-                                          await window.desktop.openLink(href);
-                                      });
-                                  }}
-                                >
-                                  {children}
-                                </a>
-                              ),
-                              img: ({ alt }) => (
-                                <span className="quiet">[Görsel: {alt}]</span>
-                              ),
-                            }}
-                          >
-                            {m.text}
-                          </Markdown>
-                          {m.attachments?.map((a) => (
-                            <button
-                              className="attachment"
-                              key={a.id}
-                              onClick={() =>
-                                void work(async () =>
-                                  setPreview(
-                                    await request("/v1/attachments/" + a.id),
-                                  ),
-                                )
+                                  : /^(https?:|mailto:|\/|#)/i.test(url)
+                                    ? url
+                                    : ""
                               }
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                a: ({ href, children }) => (
+                                  <a
+                                    href={href}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      if (href)
+                                        void work(async () => {
+                                          if (
+                                            href.startsWith("/") ||
+                                            href.startsWith("file:")
+                                          ) {
+                                            setPreview(
+                                              await request(
+                                                "/v1/artifacts/open",
+                                                {
+                                                  path: href,
+                                                  deviceId:
+                                                    task?.deviceId ||
+                                                    external?.deviceId ||
+                                                    snap.localDeviceId,
+                                                },
+                                              ),
+                                            );
+                                          } else
+                                            await window.desktop.openLink(href);
+                                        });
+                                    }}
+                                  >
+                                    {children}
+                                  </a>
+                                ),
+                                img: ({ alt }) => (
+                                  <span className="quiet">[Görsel: {alt}]</span>
+                                ),
+                              }}
                             >
-                              <FileText size={17} />
-                              {a.name}
-                              <ChevronRight size={14} />
-                            </button>
-                          ))}
-                        </div>
-                        <div className="message-actions">
-                          <CopyMessage text={m.text} />
-                          {m.role === "assistant" &&
-                            selected === "assistant" && (
+                              {m.text}
+                            </Markdown>
+                            {m.attachments?.map((a) => (
                               <button
-                                aria-label="Yanıtı seslendir"
-                                title="Yanıtı seslendir"
-                                onClick={() => void work(() => speak(m))}
+                                className="attachment"
+                                key={a.id}
+                                onClick={() =>
+                                  void work(async () =>
+                                    setPreview(
+                                      await request("/v1/attachments/" + a.id),
+                                    ),
+                                  )
+                                }
                               >
-                                <Volume2 size={13} />
-                                Seslendir
+                                <FileText size={17} />
+                                {a.name}
+                                <ChevronRight size={14} />
                               </button>
-                            )}
-                        </div>
-                      </article>
-                    </React.Fragment>
-                  ))
+                            ))}
+                          </div>
+                          <div className="message-actions">
+                            <CopyMessage text={m.text} />
+                            {m.role === "assistant" &&
+                              selected === "assistant" && (
+                                <button
+                                  aria-label="Yanıtı seslendir"
+                                  title="Yanıtı seslendir"
+                                  onClick={() => void work(() => speak(m))}
+                                >
+                                  <Volume2 size={13} />
+                                  Seslendir
+                                </button>
+                              )}
+                          </div>
+                        </article>
+                      </React.Fragment>
+                    ))}
+                  </>
                 )}
                 {!external &&
                   groupedWork.tail.map((group: any) => (
                     <WorkGroup key={group.id} run={group} />
+                  ))}
+                {(snap.queuedMessages ?? [])
+                  .filter(
+                    (q) =>
+                      q.taskId === task?.id &&
+                      !q.text.startsWith("Background task event"),
+                  )
+                  .map((q) => (
+                    <aside key={q.id} className="queued-message" role="status">
+                      <span>
+                        Sırada · {q.text.split("\n")[0].slice(0, 160)}
+                      </span>
+                      {task?.provider === "codex" && (
+                        <button
+                          disabled={busy}
+                          onClick={() =>
+                            void work(async () => {
+                              await request("/v1/messages/steer", {
+                                taskId: q.taskId,
+                                commandId: q.id,
+                                clientRequestId: "steer:" + q.id,
+                              });
+                            })
+                          }
+                        >
+                          Şimdi yönlendir
+                        </button>
+                      )}
+                    </aside>
                   ))}
               </div>
               {task?.question && (

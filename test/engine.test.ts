@@ -675,3 +675,72 @@ test("provider handoff queues behind the active turn, preserves task and childre
     await s.close();
   }
 });
+
+test("queued messages stay pending until explicitly promoted; promotion is idempotent", async () => {
+  const s = setup();
+  try {
+    const task = await delegate(s.engine);
+    await tick();
+    const message: any = await s.engine.call(scope, "send_to_subagent", {
+      taskId: task.taskId,
+      message: "Queued correction",
+      mode: "queue",
+    });
+    await tick();
+    assert.deepEqual(s.drivers[0]!.steers, []);
+    assert.equal(s.store.commands("queued").length, 1);
+    const first = s.engine.steerQueuedMessage(
+      scope,
+      task.taskId,
+      message.commandId,
+      "promote-once",
+    );
+    assert.deepEqual(
+      s.engine.steerQueuedMessage(
+        scope,
+        task.taskId,
+        message.commandId,
+        "promote-once",
+      ),
+      first,
+    );
+    await tick();
+    assert.deepEqual(s.drivers[0]!.steers, ["Queued correction"]);
+    assert.equal(s.store.commands("queued").length, 0);
+    assert.equal(s.store.runs(task.taskId).length, 1);
+    assert.throws(() =>
+      s.engine.steerQueuedMessage(
+        scope,
+        task.taskId,
+        message.commandId,
+        "promote-stale",
+      ),
+    );
+  } finally {
+    await s.close();
+  }
+});
+test("Claude queue promotion never interrupts or loses the queued message", async () => {
+  const s = setup();
+  try {
+    const task = await delegate(s.engine, { provider: "claude" });
+    await tick();
+    const message: any = await s.engine.call(scope, "send_to_subagent", {
+      taskId: task.taskId,
+      message: "Wait for completion",
+      mode: "queue",
+    });
+    assert.throws(() =>
+      s.engine.steerQueuedMessage(
+        scope,
+        task.taskId,
+        message.commandId,
+        "unsupported",
+      ),
+    );
+    assert.equal(s.store.commands("queued").length, 1);
+    assert.deepEqual(s.drivers[0]!.steers, []);
+  } finally {
+    await s.close();
+  }
+});

@@ -648,6 +648,15 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun steerQueued(taskId: String, commandId: String) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { repo.request("/v1/messages/steer", JSONObject().put("taskId", taskId).put("commandId", commandId).put("clientRequestId", "steer:" + commandId)) }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { update { it.copy(error = e.message) } }
+        }
+    }
+
     fun action(task: JSONObject, answer: Map<String, String>? = null) {
         viewModelScope.launch {
             try {
