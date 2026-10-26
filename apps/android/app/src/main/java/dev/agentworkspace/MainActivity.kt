@@ -358,7 +358,11 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                         onClick = {
                                             model.openAttachment(ChatAttachment(id, name))
                                         },
-                                        label = { Text(name, maxLines = 1) },
+                                        label = {
+                                            val thumbnail = s.attachedThumbnails[id]
+                                            if (thumbnail != null) coil3.compose.AsyncImage(model = thumbnail, contentDescription = name, modifier = Modifier.size(64.dp), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                                            else Text(name, maxLines = 1)
+                                        },
                                         trailingIcon = {
                                             IconButton(
                                                 onClick = { model.removeAttachment(id) },
@@ -410,14 +414,9 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             ) {
                                 Icon(Icons.Default.AttachFile, "Dosya ekle")
                             }
-                            OutlinedTextField(
-                                value = draft,
-                                onValueChange = { changeDraft(it) },
-                                placeholder = { Text("Mesajını yaz…") },
-                                modifier = Modifier.weight(1f),
-                                maxLines = 5,
-                                shape = RoundedCornerShape(12.dp),
-                            )
+                            key(tab, model.selected, model.nativeSelection?.optString("id")) {
+                                RichMessageInput(value = draft, onValueChange = { changeDraft(it) }, onFile = { model.upload(it) }, modifier = Modifier.weight(1f))
+                            }
                             if (tab == "assistant")
                                 IconButton(onClick = { showVoice = true }) {
                                     Icon(

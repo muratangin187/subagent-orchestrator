@@ -556,3 +556,51 @@ test("quota failure notifies parent, holds queued work, preserves run evidence o
     await s.close();
   }
 });
+
+test("assistant follow-up runs while a shared child is active, ordinary writers remain serialized", async () => {
+  const s = setup();
+  const writer = { ...scope, ceiling: "auto-accept-edits" as const };
+  try {
+    const parent = (await s.engine.call(writer, "delegate_task", {
+      task: "coordinate",
+    })) as any;
+    const profile = s.store.task(parent.taskId);
+    profile.conversationKind = "assistant";
+    s.store.saveTask(profile);
+    await tick();
+    const childScope = {
+      ...writer,
+      id: `child:${parent.taskId}`,
+      parentTaskId: parent.taskId,
+    };
+    const child = (await s.engine.call(childScope, "delegate_task", {
+      task: "long edit",
+      mode: "async",
+    })) as any;
+    await tick();
+    assert.equal(s.store.task(child.taskId).status, "running");
+    s.drivers[0]!.resolve!("Started in background");
+    await tick();
+    await s.engine.call(writer, "send_to_subagent", {
+      taskId: parent.taskId,
+      message: "new unrelated topic",
+      mode: "queue",
+    });
+    await tick();
+    await tick();
+    assert.equal(s.store.task(parent.taskId).status, "running");
+    assert.equal(s.store.task(child.taskId).status, "running");
+    const sibling = (await s.engine.call(childScope, "delegate_task", {
+      task: "another edit",
+      mode: "async",
+    })) as any;
+    await tick();
+    assert.equal(s.store.task(sibling.taskId).status, "pending");
+    await assert.rejects(
+      s.engine.call(childScope, "wait_for_task", { taskId: child.taskId }),
+      /Assistant must delegate async/,
+    );
+  } finally {
+    await s.close();
+  }
+});

@@ -9,6 +9,7 @@ test("message acceptance does not show stale completed turn; new run clears loca
     delivery: { phase: "accepted", previousRunId: "old" },
   };
   assert.equal(chatStatus(base).animated, true);
+  assert.equal(chatStatus({ ...base, task: { runId: "new", status: "pending" } }).label, "Mesaj sırada…");
   assert.equal(
     chatStatus({ ...base, task: { runId: "new", status: "completed" } }).label,
     "Yanıt tamamlandı",

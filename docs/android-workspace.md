@@ -128,3 +128,23 @@ a separate live spoken check; API round-trip success does not establish device a
 
 ### Görünüm
 Ayarlar → Görünüm bölümünde Sistem / Açık / Koyu ve Petrol / Mavi / Bakır / Gül vurgu renkleri seçilebilir. Seçim telefonda saklanır ve uygulama yeniden başlatıldığında korunur; cihazlar arasında senkronize edilmez. Sistem modu Android görünümünü izler. IBM Plex Sans uygulamaya gömülüdür; yazı tipi için ağ isteği yapılmaz. Tasarım kararları kökteki DESIGN.md dosyasındadır.
+
+### Attachments and app lifecycle
+
+The composer accepts images from Android's paste/keyboard rich-content menu and
+cross-app drag and drop (when the keyboard/source app provides a content URI).
+Desktop accepts clipboard images with Cmd+V and files dropped on the composer.
+Images show a small preview; other supported files keep their filename. The same
+five-file, 5 MiB-per-file limits apply to every entry point. Add a message before
+sending. Unsaved composer drafts and in-progress uploads are local to the UI.
+
+Closing a client does not cancel server-accepted work. The coordinator and the
+executing computer must remain running. Do not restart the coordinator to deploy
+an update during active provider runs: interrupted runs can require explicit
+recovery rather than automatic replay.
+
+The trusted assistant profile coordinates asynchronously and delegates repository
+edits. It does not acquire a shared repository writer slot; ordinary writing
+sessions continue to serialize. Child completion/questions return as later turns.
+Android retrieves all event pages, then resumes after the last received event;
+long conversations no longer stop at the first 4,000 events.

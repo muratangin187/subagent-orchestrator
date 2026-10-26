@@ -142,3 +142,39 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 .status-dot.running { background: var(--success); }
 .danger-bg, .danger-bg:hover { background: var(--error); color: var(--accent-fg); }
 @media (max-width: 1000px) { .job-card { grid-template-columns: 90px minmax(0, 1fr); } .job-card > .badge { grid-column: 2; justify-self: start; } }
+
+.composer.drop-target {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  outline: 2px dashed var(--accent);
+  outline-offset: 3px;
+}
+.drop-hint {
+  color: var(--accent);
+  font-size: 13px;
+  padding: 8px;
+}
+.file-chips .image-chip {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+}
+.image-chip img {
+  display: block;
+  width: 76px;
+  height: 76px;
+  object-fit: cover;
+}
+.file-chips .image-chip button {
+  position: absolute;
+  right: 3px;
+  top: 3px;
+  width: 28px;
+  height: 28px;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--control);
+}

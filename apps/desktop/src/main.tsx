@@ -1,3 +1,8 @@
+import {
+  transferredFiles,
+  validateAttachments,
+  imageThumbnail,
+} from "./attachment-input.mjs";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { WorkGroup } from "./WorkGroup";
 import { workGroups } from "./timeline.mjs";
@@ -111,7 +116,10 @@ function App() {
     [events, setEvents] = useState<Event[]>([]),
     [older, setOlder] = useState<number | null>(null),
     [drafts, setDrafts] = useState<Record<string, string>>({}),
-    [files, setFiles] = useState<{ id: string; name: string }[]>([]),
+    [files, setFiles] = useState<
+      { id: string; name: string; thumbnail?: string }[]
+    >([]),
+    [draggingFiles, setDraggingFiles] = useState(false),
     [provider, setProvider] = useState("codex"),
     [deviceId, setDeviceId] = useState(""),
     [model, setModel] = useState(""),
@@ -385,19 +393,57 @@ function App() {
     if (!modal && !preview) return;
     const previous = document.activeElement as HTMLElement | null;
     const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
-    const focusable = () => Array.from(dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]') || []).filter(el => el.getClientRects().length);
+    const focusable = () =>
+      Array.from(
+        dialog?.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]',
+        ) || [],
+      ).filter((el) => el.getClientRects().length);
     focusable()[0]?.focus();
     const trap = (e: KeyboardEvent) => {
       if (e.key !== "Tab") return;
       const nodes = focusable();
-      const first = nodes[0], last = nodes[nodes.length - 1];
-      if (!first) { e.preventDefault(); return; }
-      if (e.shiftKey && (document.activeElement === first || !dialog?.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && (document.activeElement === last || !dialog?.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+      const first = nodes[0],
+        last = nodes[nodes.length - 1];
+      if (!first) {
+        e.preventDefault();
+        return;
+      }
+      if (
+        e.shiftKey &&
+        (document.activeElement === first ||
+          !dialog?.contains(document.activeElement))
+      ) {
+        e.preventDefault();
+        last.focus();
+      } else if (
+        !e.shiftKey &&
+        (document.activeElement === last ||
+          !dialog?.contains(document.activeElement))
+      ) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", trap);
-    return () => { document.removeEventListener("keydown", trap); if (previous?.isConnected) previous.focus(); };
+    return () => {
+      document.removeEventListener("keydown", trap);
+      if (previous?.isConnected) previous.focus();
+    };
   }, [modal, !!preview]);
+  const uploadInFlight = useRef(false);
+  useEffect(() => {
+    const preventNavigation = (e: DragEvent) => {
+      if (Array.from(e.dataTransfer?.types || []).includes("Files"))
+        e.preventDefault();
+    };
+    window.addEventListener("dragover", preventNavigation);
+    window.addEventListener("drop", preventNavigation);
+    return () => {
+      window.removeEventListener("dragover", preventNavigation);
+      window.removeEventListener("drop", preventNavigation);
+    };
+  }, []);
   function savePage() {
     const current = route.current;
     const el =
@@ -529,26 +575,37 @@ function App() {
     await refresh();
     nearBottom.current = true;
   }
-  async function upload(list: FileList | null) {
-    if (!list) return;
-    if (files.length + list.length > 5)
-      throw Error("En fazla 5 dosya ekleyebilirsin.");
-    for (const f of Array.from(list)) {
-      if (f.size > 5 * 1024 * 1024) throw Error(f.name + ": en fazla 5 MiB.");
-      const content = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result).split(",")[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(f);
-      });
-      const a = await request("/v1/upload", {
-        id: uid(),
-        name: f.name,
-        content,
-      });
-      setFiles((prev) => [...prev, a]);
+  async function upload(list: FileList | File[] | null) {
+    const incoming = Array.from(list || []);
+    if (!incoming.length) return;
+    if (uploadInFlight.current)
+      throw Error("Devam eden dosya yüklemesini bekle.");
+    const names = validateAttachments(incoming, files.length);
+    const target = selection.current,
+      generation = epoch.current;
+    uploadInFlight.current = true;
+    try {
+      for (const [index, f] of incoming.entries()) {
+        if (target !== selection.current || generation !== epoch.current) break;
+        const content = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result).split(",")[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(f);
+        });
+        const thumbnail = await imageThumbnail(f);
+        const a = await request("/v1/upload", {
+          id: uid(),
+          name: names[index],
+          content,
+        });
+        if (target === selection.current && generation === epoch.current)
+          setFiles((prev) => [...prev, { ...a, thumbnail }]);
+      }
+    } finally {
+      uploadInFlight.current = false;
+      if (fileInput.current) fileInput.current.value = "";
     }
-    if (fileInput.current) fileInput.current.value = "";
   }
   async function nativeList(more = false) {
     const r = await request(
@@ -896,9 +953,7 @@ function App() {
           <div className="brand-mark">
             <Sparkles size={21} />
           </div>
-          <div>
-            Workspace
-          </div>
+          <div>Workspace</div>
         </div>
         <div className="search-box">
           <Search size={16} />
@@ -1009,9 +1064,7 @@ function App() {
               <Sparkles size={38} />
             </div>
 
-            <h1>
-              Çalışma alanına bağlan
-            </h1>
+            <h1>Çalışma alanına bağlan</h1>
             <p>
               Telefondaki asistanın, oturumların ve alt ajanların.
               <br />
@@ -1225,24 +1278,26 @@ function App() {
         ) : (
           <div className={"workspace " + (!inspector ? "wide" : "")}>
             <section className="conversation">
-              {selected !== "assistant" && <div className="chat-heading">
-                <div className="inline">
-                  <div className="assistant-mark">
-                    <Sparkles size={22} />
+              {selected !== "assistant" && (
+                <div className="chat-heading">
+                  <div className="inline">
+                    <div className="assistant-mark">
+                      <Sparkles size={22} />
+                    </div>
+                    <div>
+                      <h2 title={heading}>{heading}</h2>
+                      <small>
+                        {selected === "assistant"
+                          ? "İşleri başlat, gelişmeleri takip et."
+                          : external
+                            ? "Terminal geçmişi"
+                            : task?.provider + " oturumu"}
+                      </small>
+                    </div>
                   </div>
-                  <div>
-                    <h2 title={heading}>{heading}</h2>
-                    <small>
-                      {selected === "assistant"
-                        ? "İşleri başlat, gelişmeleri takip et."
-                        : external
-                          ? "Terminal geçmişi"
-                          : task?.provider + " oturumu"}
-                    </small>
-                  </div>
+                  {task && <Badge task={task} />}
                 </div>
-                {task && <Badge task={task} />}
-              </div>}
+              )}
               <div
                 className="messages"
                 ref={scroll}
@@ -1409,32 +1464,35 @@ function App() {
                 </form>
               )}
               <div className="composer-wrap">
-                {!external && !(progress.kind === "idle" && task?.status === "completed") && (
-                  <div
-                    className={"chat-progress " + progress.kind}
-                    role="status"
-                    aria-live="polite"
-                    data-testid="chat-progress"
-                  >
-                    {progress.animated ? (
-                      <Loader2 size={18} className="progress-spinner" />
-                    ) : progress.kind === "warning" ? (
-                      <AlertCircle size={18} />
-                    ) : (
-                      <CheckCircle2 size={18} />
-                    )}
-                    <div>
-                      <strong>{progress.label}</strong>
-                      <small>{progress.detail}</small>
+                {!external &&
+                  !(
+                    progress.kind === "idle" && task?.status === "completed"
+                  ) && (
+                    <div
+                      className={"chat-progress " + progress.kind}
+                      role="status"
+                      aria-live="polite"
+                      data-testid="chat-progress"
+                    >
+                      {progress.animated ? (
+                        <Loader2 size={18} className="progress-spinner" />
+                      ) : progress.kind === "warning" ? (
+                        <AlertCircle size={18} />
+                      ) : (
+                        <CheckCircle2 size={18} />
+                      )}
+                      <div>
+                        <strong>{progress.label}</strong>
+                        <small>{progress.detail}</small>
+                      </div>
+                      {task?.deviceId && (
+                        <span className="progress-device">
+                          {snap.devices?.find((d) => d.id === task.deviceId)
+                            ?.name || task.deviceId}
+                        </span>
+                      )}
                     </div>
-                    {task?.deviceId && (
-                      <span className="progress-device">
-                        {snap.devices?.find((d) => d.id === task.deviceId)
-                          ?.name || task.deviceId}
-                      </span>
-                    )}
-                  </div>
-                )}
+                  )}
                 {external && (
                   <label className="external-confirm">
                     <input
@@ -1446,7 +1504,26 @@ function App() {
                   </label>
                 )}
                 <form
-                  className="composer"
+                  className={"composer" + (draggingFiles ? " drop-target" : "")}
+                  onDragOver={(e) => {
+                    if (Array.from(e.dataTransfer.types).includes("Files")) {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = busy ? "none" : "copy";
+                      setDraggingFiles(!busy);
+                    }
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node))
+                      setDraggingFiles(false);
+                  }}
+                  onDrop={(e) => {
+                    const incoming = transferredFiles(e.dataTransfer);
+                    if (!incoming.length) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDraggingFiles(false);
+                    if (!busy) void work(() => upload(incoming));
+                  }}
                   onSubmit={(e) => {
                     e.preventDefault();
                     void work(send);
@@ -1454,6 +1531,12 @@ function App() {
                 >
                   <textarea
                     ref={composer}
+                    onPaste={(e) => {
+                      const incoming = transferredFiles(e.clipboardData);
+                      if (!incoming.length) return;
+                      e.preventDefault();
+                      if (!busy) void work(() => upload(incoming));
+                    }}
                     aria-label="Mesaj"
                     placeholder="Bir mesaj yaz veya bir iş ver…"
                     value={draft}
@@ -1472,12 +1555,30 @@ function App() {
                       }
                     }}
                   />
+                  {draggingFiles && (
+                    <div className="drop-hint" role="status">
+                      Dosyaları eklemek için bırak
+                    </div>
+                  )}
                   {files.length > 0 && (
                     <div className="file-chips">
                       {files.map((f) => (
-                        <span key={f.id}>
-                          <FileText size={14} />
-                          {f.name}
+                        <span
+                          key={f.id}
+                          className={f.thumbnail ? "image-chip" : ""}
+                        >
+                          {f.thumbnail ? (
+                            <img
+                              src={f.thumbnail}
+                              alt={f.name}
+                              title={f.name}
+                            />
+                          ) : (
+                            <>
+                              <FileText size={14} />
+                              {f.name}
+                            </>
+                          )}
                           <button
                             type="button"
                             aria-label={f.name + " kaldır"}
@@ -1622,7 +1723,6 @@ function App() {
                     </div>
                   ))}
                 </details>
-
               </aside>
             )}
           </div>
@@ -1642,7 +1742,15 @@ function App() {
           <section
             role="dialog"
             aria-modal="true"
-            aria-label={modal === "settings" ? "Ayarlar" : modal === "voice" ? "Sesli asistan" : preview ? "Dosya önizleme" : "Çalışma alanı işlemi"}
+            aria-label={
+              modal === "settings"
+                ? "Ayarlar"
+                : modal === "voice"
+                  ? "Sesli asistan"
+                  : preview
+                    ? "Dosya önizleme"
+                    : "Çalışma alanı işlemi"
+            }
             className={
               "modal " +
               (modal === "voice"

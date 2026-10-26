@@ -46,6 +46,7 @@ data class ScreenState(
     val openingAttachment: String? = null,
     val attachmentPreview: AttachmentPreview? = null,
     val attached: List<Pair<String, String>> = emptyList(),
+    val attachedThumbnails: Map<String, ByteArray> = emptyMap(),
 )
 
 fun JSONArray.objects(): List<JSONObject> = (0 until length()).mapNotNull { optJSONObject(it) }
@@ -73,6 +74,8 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
     var newModel = ""
     private var polling: Job? = null
     private var attachmentJobs = 0
+    private var attachmentGeneration = 0
+    private val eventHistory = linkedMapOf<String, JSONArray>()
     private val refreshMutex = kotlinx.coroutines.sync.Mutex()
 
     init {
@@ -122,6 +125,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun open(id: String) {
+        attachmentGeneration++
         selected = id
         nativeSelection = null
         update {
@@ -129,16 +133,18 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                 lines =
                     runCatching { decodeLines(JSONArray(repo.local.get("chat:$id") ?: "[]")) }
                         .getOrDefault(emptyList()),
-                attached = emptyList(),
+                attached = emptyList(), attachedThumbnails = emptyMap(),
+                workGroups = emptyMap(), toolLines = emptyList(),
             )
         }
         viewModelScope.launch { refresh() }
     }
 
     fun newSession() {
+        attachmentGeneration++
         selected = "new"
         nativeSelection = null
-        update { it.copy(lines = emptyList(), attached = emptyList()) }
+        update { it.copy(lines = emptyList(), attached = emptyList(), attachedThumbnails = emptyMap(), workGroups = emptyMap(), toolLines = emptyList()) }
     }
 
     private fun text(content: Any?): String =
@@ -197,16 +203,17 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
             if (id.isNotBlank() && id != "new" && nativeSelection == null) {
                 val events =
                     withContext(Dispatchers.IO) {
-                        val all = JSONArray()
-                        var offset = 0L
-                        var count = 0
-                        do {
-                            val page = repo.request("/v1/messages?taskId=$id&after=$offset")
-                            val messages = page.optJSONArray("messages") ?: JSONArray()
-                            messages.objects().forEach { all.put(it) }
-                            offset = page.optLong("nextOffset")
-                            count = messages.length()
-                        } while (count == 200 && all.length() < 4000)
+                        // Resume after the last event, not after an arbitrary history cap.
+                        // Keep per-task cursors so switching chats cannot mix streams.
+                        val all = eventHistory.getOrPut(id) { JSONArray() }
+                        val offset = all.optJSONObject(all.length() - 1)?.optLong("id") ?: 0L
+                        drainEventPages(offset, read = { after ->
+                            val page = repo.request("/v1/messages?taskId=$id&after=$after")
+                            EventPage(page.optJSONArray("messages")?.objects() ?: emptyList(), page.optLong("nextOffset", after))
+                        }, append = { items -> items.forEach { all.put(it) } })
+                        // Bound the number of cached conversations, never truncate a
+                        // conversation before its latest completion/message events.
+                        while (eventHistory.size > 5) eventHistory.remove(eventHistory.keys.first { it != id })
                         all
                     }
                 val tools =
@@ -383,7 +390,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                             value,
                             it.attached.map { a -> ChatAttachment(a.first, a.second) },
                         ),
-                attached = emptyList(),
+                attached = emptyList(), attachedThumbnails = emptyMap(),
             )
         }
         viewModelScope.launch {
@@ -442,6 +449,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun openNative(session: JSONObject, more: Boolean = false) {
+        if (!more) { attachmentGeneration++; update { it.copy(attached = emptyList(), attachedThumbnails = emptyMap()) } }
         nativeSelection = session
         selected = "external"
         val cursor = if (more) state.value.historyCursor else null
@@ -548,7 +556,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun removeAttachment(id: String) {
-        update { it.copy(attached = it.attached.filterNot { a -> a.first == id }) }
+        update { it.copy(attached = it.attached.filterNot { a -> a.first == id }, attachedThumbnails = it.attachedThumbnails - id) }
     }
 
     fun showError(message: String) {
@@ -556,6 +564,8 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun upload(uri: Uri, temporaryFile: java.io.File? = null) {
+        if (state.value.attached.size + attachmentJobs >= 5) { temporaryFile?.delete(); showError("En fazla 5 dosya ekleyebilirsin."); return }
+        val generation = attachmentGeneration
         attachmentJobs++
         update { it.copy(loading = true) }
         viewModelScope.launch {
@@ -563,14 +573,17 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                 val result =
                     withContext(Dispatchers.IO) {
                         val resolver = getApplication<Application>().contentResolver
-                        val name =
+                        val originalName =
                             resolver.query(uri, null, null, null, null)?.use { c ->
                                 if (c.moveToFirst())
                                     c.getString(
-                                        c.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME)
+                                        c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 } ?: return@use null
                                     )
                                 else null
-                            } ?: "attachment.txt"
+                            }
+                        val mime = resolver.getType(uri)
+                        val name = originalName?.takeIf { Regex("\\.(txt|md|json|csv|log|ts|js|py|html?|pdf|png|jpe?g|webp)$", RegexOption.IGNORE_CASE).containsMatchIn(it) }
+                            ?: when (mime) { "image/png" -> "image.png"; "image/jpeg" -> "image.jpg"; "image/webp" -> "image.webp"; "application/pdf" -> "attachment.pdf"; "text/plain" -> "attachment.txt"; else -> throw IllegalArgumentException("Desteklenmeyen dosya türü") }
                         val bytes =
                             resolver.openInputStream(uri)!!.use { stream ->
                                 val out = java.io.ByteArrayOutputStream()
@@ -586,19 +599,21 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                                 out.toByteArray()
                             }
                         require(bytes.size <= 5 * 1024 * 1024) { "Dosya sınırı 5 MiB" }
-                        repo.request(
+                        require(bytes.isNotEmpty()) { "Dosya boş" }
+                        val thumbnail = attachmentThumbnail(bytes, name)
+                        val uploaded = repo.request(
                             "/v1/upload",
                             JSONObject()
                                 .put("id", UUID.randomUUID())
                                 .put("name", name)
                                 .put("content", Base64.encodeToString(bytes, Base64.NO_WRAP)),
                         )
+                        uploaded to thumbnail
                     }
-                update {
-                    it.copy(
-                        attached =
-                            it.attached + (result.getString("id") to result.getString("name"))
-                    )
+                if (generation == attachmentGeneration) update {
+                    val id = result.first.getString("id")
+                    it.copy(attached = it.attached + (id to result.first.getString("name")),
+                        attachedThumbnails = result.second?.let { thumb -> it.attachedThumbnails + (id to thumb) } ?: it.attachedThumbnails)
                 }
             } catch (e: Exception) {
                 update { it.copy(error = e.message) }

@@ -1,0 +1,14 @@
+<!doctype html><html lang="tr"><head><meta charset="utf-8"></head><body><div id="root"></div><script type="module">
+window.qaUploads=[];
+window.desktop={
+ connection:async()=>({connected:true,origin:'https://isolated-fixture.invalid'}),
+ onCommand:()=>()=>{},notify:async()=>{},copyText:async()=>{},
+ request:async(path,body)=>{
+  if(path==='/v1/state')return {tasks:[],inputs:[],assistantId:'fixture-assistant',devices:[]};
+  if(path.startsWith('/v1/messages'))return {messages:[],nextOffset:0};
+  if(path==='/v1/upload'){window.qaUploads.push(body);return {id:body.id,name:body.name};}
+  throw Error('Isolated fixture rejects '+path);
+ }
+};
+await import('/src/main.tsx');
+</script></body></html>

@@ -586,9 +586,17 @@ export class Engine {
         continue;
       if (
         t.runtimeMode !== "read-only" &&
+        t.conversationKind !== "assistant" &&
         [...this.active.keys()].some((id) => {
           const other = this.store.task(id);
-          return other.cwd === t.cwd && other.status !== "waiting_children";
+          // The trusted assistant profile coordinates work; it never owns a
+          // repository write lease. Ordinary coding sessions still serialize.
+          return (
+            other.conversationKind !== "assistant" &&
+            other.deviceId === t.deviceId &&
+            other.cwd === t.cwd &&
+            other.status !== "waiting_children"
+          );
         })
       )
         continue;

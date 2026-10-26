@@ -40,12 +40,12 @@ export function chatStatus({
           : "Mesaj alındı · Yanıt bekleniyor…",
       detail: "Yanıt burada görünecek. Bu sırada başka bir mesaj yazabilirsin.",
     };
-  if (["running", "starting", "queued", "waiting"].includes(task?.status))
+  if (["running", "starting", "pending", "queued", "waiting"].includes(task?.status))
     return {
       kind: "working",
       animated: true,
       label:
-        task.status === "queued"
+        ["pending", "queued"].includes(task.status)
           ? "Mesaj sırada…"
           : "Asistan yanıt hazırlıyor…",
       detail: "Yanıt burada görünecek. Bu sırada başka bir mesaj yazabilirsin.",
