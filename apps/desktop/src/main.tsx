@@ -1225,7 +1225,7 @@ function App() {
         ) : (
           <div className={"workspace " + (!inspector ? "wide" : "")}>
             <section className="conversation">
-              <div className="chat-heading">
+              {selected !== "assistant" && <div className="chat-heading">
                 <div className="inline">
                   <div className="assistant-mark">
                     <Sparkles size={22} />
@@ -1242,7 +1242,7 @@ function App() {
                   </div>
                 </div>
                 {task && <Badge task={task} />}
-              </div>
+              </div>}
               <div
                 className="messages"
                 ref={scroll}
