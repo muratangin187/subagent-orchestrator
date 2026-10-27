@@ -17,3 +17,10 @@ export function splitRatio(value, width, minimum = 340) {
     Math.min(1 - edge, Number.isFinite(value) ? value : 0.5),
   );
 }
+
+// Controlled parent updates omit absent external metadata; they are the same route.
+export function sameRoute(a, b) {
+  return a.view === b.view && a.selected === b.selected &&
+    (a.external?.id ?? null) === (b.external?.id ?? null) &&
+    (a.external?.deviceId ?? null) === (b.external?.deviceId ?? null);
+}

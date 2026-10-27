@@ -46,3 +46,13 @@ test("divider clamps each pane to its usable width and recovers after window res
   assert.equal(splitRatio(NaN, 2000), 0.5);
   assert.equal(splitRatio(0.3, 0), 0.5);
 });
+
+test('controlled navigation acknowledges a normal selection without resetting its pending transcript', async () => {
+  const { sameRoute } = await import('../src/split-layout.mjs');
+  const clicked = {view:'chat', selected:'task-a', external:null};
+  const parentAck = {view:'chat', selected:'task-a'};
+  assert.equal(sameRoute(clicked, parentAck), true);
+  assert.equal(sameRoute(parentAck, clicked), true);
+  assert.equal(sameRoute(clicked, {...parentAck, selected:'task-b'}), false);
+  assert.equal(sameRoute({...clicked, external:{id:'native-a',deviceId:'xps'}}, {...clicked, external:{id:'native-a',deviceId:'mac'}}), false);
+});

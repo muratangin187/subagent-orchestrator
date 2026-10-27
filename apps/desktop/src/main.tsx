@@ -1,3 +1,4 @@
+import { sameRoute } from "./split-layout.mjs";
 import { sessionLinkId } from "./session-links.mjs";
 import { createPortal } from "react-dom";
 import { WorkspaceLayout, type PaneProps } from "./WorkspaceLayout";
@@ -142,6 +143,7 @@ function App({
     >({}),
     [messages, setMessages] = useState<Message[]>([]),
     [events, setEvents] = useState<Event[]>([]),
+    [historyLoaded, setHistoryLoaded] = useState(false),
     [older, setOlder] = useState<number | null>(null),
     [drafts, setDrafts] = useState<Record<string, string>>({}),
     [files, setFiles] = useState<
@@ -269,6 +271,7 @@ function App({
             : "&after=" + cursor.current),
     );
     if (gen !== epoch.current || pick !== selection.current) return;
+    setHistoryLoaded(true);
     setEvents((prev) => {
       const merged = new Map(
         [...prev, ...r.messages].map((e: Event) => [e.id, e]),
@@ -487,7 +490,7 @@ function App({
     }
   }
   function visit(next: Route, record = true) {
-    if (JSON.stringify(route.current) === JSON.stringify(next)) return;
+    if (sameRoute(route.current, next)) return;
     savePage();
     if (record) onSelect(next.selected);
     route.current = next;
@@ -507,6 +510,7 @@ function App({
     setSelected(next.selected);
     setExternal(next.external || null);
     setNativeConfirmed(false);
+    setHistoryLoaded(!!cached);
     setMessages(cached?.messages || []);
     setEvents(cached?.events || []);
     setOlder(cached?.older ?? null);
@@ -1286,7 +1290,11 @@ function App({
                     Önceki mesajları yükle
                   </button>
                 )}
-                {!messages.length ? (
+                {!messages.length && !historyLoaded && !external ? (
+                  <div className="chat-empty" role="status">
+                    <p>{offline ? "Sohbet geçmişi için bağlantı bekleniyor…" : "Sohbet yükleniyor…"}</p>
+                  </div>
+                ) : !messages.length ? (
                   <div className="chat-empty">
                     <Sparkles size={30} />
                     <h2>Bugün neyi ilerletelim?</h2>
@@ -1435,7 +1443,6 @@ function App({
                                     Seslendir
                                   </button>
                                 )}
-                            </div>
                             {m.created && (
                               <time
                                 className="message-time"
@@ -1444,6 +1451,7 @@ function App({
                                 {time(m.created)}
                               </time>
                             )}
+                            </div>
                           </article>
                         )}
                       </React.Fragment>

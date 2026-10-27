@@ -315,3 +315,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
   .model-controls > .model-picker > button { max-width: 160px; padding-inline: 4px; gap: 4px; }
   .model-menu { width: min(320px, 85cqw); }
 }
+
+.message-actions .message-time { margin: 0 0 0 auto; opacity: 0; pointer-events: none; white-space: nowrap; }
+.message:hover .message-time, .message:focus-within .message-time { opacity: 1; }
+.message.user .message-actions .message-time { margin-left: 0; }
