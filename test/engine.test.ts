@@ -38,7 +38,7 @@ class Fake implements Driver {
     this.reject?.(new Error("Stopped"));
   }
 }
-function setup(concurrency = 4) {
+function setup(concurrency: number | null = null) {
   const store = new Store(":memory:");
   const drivers: Fake[] = [];
   const engine = new Engine(
@@ -758,6 +758,68 @@ test("Claude queue promotion never interrupts or loses the queued message", asyn
     );
     assert.equal(s.store.commands("queued").length, 1);
     assert.deepEqual(s.drivers[0]!.steers, []);
+  } finally {
+    await s.close();
+  }
+});
+
+test("unlimited admits more than twelve same-depth jobs exactly once", async () => {
+  const s = setup(null);
+  try {
+    const jobs = await Promise.all(
+      Array.from({ length: 17 }, (_, i) =>
+        delegate(s.engine, { clientRequestId: `unlimited-${i}` }),
+      ),
+    );
+    await tick();
+    assert.equal(s.drivers.length, 17);
+    assert.ok(jobs.every((j) => s.store.task(j.taskId).status === "running"));
+    await delegate(s.engine, { clientRequestId: "unlimited-0" });
+    await tick();
+    assert.equal(s.drivers.length, 17);
+    const caps: any = await s.engine.call(
+      scope,
+      "orchestrator_capabilities",
+      {},
+    );
+    assert.equal(caps.maxConcurrencyPerDepth, null);
+    assert.equal(caps.maxProviderSessions, null);
+    assert.equal(caps.maxDepth, 3);
+    await s.engine.call(scope, "cancel_task", { taskId: jobs[0].taskId });
+    await tick();
+    assert.equal(s.store.task(jobs[0].taskId).status, "cancelled");
+    s.drivers[1]!.resolve!("done");
+    await tick();
+    await delegate(s.engine, { clientRequestId: "unlimited-next" });
+    await tick();
+    assert.equal(s.drivers.length, 18);
+  } finally {
+    await s.close();
+  }
+});
+
+test("waiting parent releases admission capacity and wakes queued peers", async () => {
+  const s = setup(1);
+  try {
+    const parent = await delegate(s.engine);
+    const peer = await delegate(s.engine);
+    const child = await delegate(s.engine, { parentTaskId: parent.taskId });
+    await tick();
+    assert.equal(s.store.task(peer.taskId).status, "pending");
+    const waiting = s.engine.call(
+      { ...scope, id: `child:${parent.taskId}`, parentTaskId: parent.taskId },
+      "wait_for_task",
+      { taskId: child.taskId, timeoutMs: 1000 },
+    );
+    await tick();
+    assert.equal(s.store.task(peer.taskId).status, "running");
+    s.drivers.find((d) => d.context?.task.id === child.taskId)!.resolve!(
+      "done",
+    );
+    await waiting;
+    assert.equal(s.store.task(parent.taskId).status, "running");
+    await tick();
+    assert.equal(s.drivers.length, 3);
   } finally {
     await s.close();
   }

@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { Store } from "./store.js";
 import { Engine } from "./engine.js";
+import { parseConcurrency } from "./scheduler-config.js";
 import { schemas, runtime, type Tool } from "./schema.js";
 import { CodexDriver } from "./providers/codex.js";
 import { ClaudeDriver } from "./providers/claude.js";
@@ -184,12 +185,7 @@ export async function serve(
           : p === "codex"
             ? new CodexDriver()
             : new ClaudeDriver(),
-      z.coerce
-        .number()
-        .int()
-        .min(1)
-        .max(16)
-        .parse(process.env.ORCHESTRATOR_CONCURRENCY_PER_DEPTH ?? 4),
+      parseConcurrency(process.env.ORCHESTRATOR_CONCURRENCY_PER_DEPTH),
       z.coerce
         .number()
         .int()

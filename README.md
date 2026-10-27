@@ -269,7 +269,7 @@ Tek görevi durdurmak için `cancel_task` kullanın. Görev geçmişi varsayıla
 
 Her MCP köprüsü varsayılan olarak farklı ana oturum kimliği üretir. Önceki işlerinize yeniden bağlanmak için `orchestrator_capabilities` çıktısındaki `scope.id` değerini `--parent` argümanı olarak saklayın. Aynı kimliği bağımsız sohbetlere ortak vermeyin.
 
-Servis başlamadan önce `ORCHESTRATOR_MAX_DEPTH` (1–8, varsayılan 3) ve `ORCHESTRATOR_CONCURRENCY_PER_DEPTH` (1–16, varsayılan 4) ayarlanabilir. İlk köprünün başlattığı servis ortamı korur; değişiklik için aktif işleri güvenli biçimde bitirip servisi yeniden başlatın.
+Servis başlamadan önce `ORCHESTRATOR_MAX_DEPTH` (1–8, varsayılan 3) ve `ORCHESTRATOR_CONCURRENCY_PER_DEPTH` (`unlimited` varsayılanı veya pozitif güvenli tamsayı) ayarlanabilir. İlk köprünün başlattığı servis ortamı korur; değişiklik için aktif işleri güvenli biçimde bitirip servisi yeniden başlatın.
 
 Aynı çalışma dizinindeki yazabilen görevler sırayla çalışır. Yazan üst ajan aynı dizindeki yazan çocuğunu beklemeli veya ayrı worktree kullanmalıdır. Üst ajanların beklemesi diğer derinliklerin işlem yuvalarını tüketmez.
 

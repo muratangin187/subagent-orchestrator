@@ -127,7 +127,7 @@ Sonuç ve bildirimler çağıran iş ajanına döner. İş ajanı bunları birle
 
 Ana sohbet derinliğe dahil değildir. Varsayılan en fazla üç ajan katmanı ve **katman başına dört** çalışan süreç vardır; toplam üst sınır on ikidir. Üst ajan çocuk sonucunu beklerken `waiting_children` olur. Ayrı katman kotaları sayesinde bekleyen üst ajanlar alt ajanların tüm yuvalarını tüketmez. Aynı dizindeki yazma sırası da bu bekleme sırasında bırakılır. Yazan bir üst ajan çalışırken aynı dizine yazacak asenkron çocuk sırada bekler; üst ajan `wait_for_task` çağırmalı veya çocuk için ayrı worktree seçmelidir. Salt okunur çocuklar eşzamanlı çalışabilir. Bekleme zaman aşımından sonra üst ajan çalışmaya devam edebilir; eşzamanlı dosya değişiklikleri için ayrı worktree kullanın.
 
-Servis başlamadan önce `ORCHESTRATOR_MAX_DEPTH` (1–8) ve `ORCHESTRATOR_CONCURRENCY_PER_DEPTH` (1–16) ile sınırları değiştirebilirsiniz. İlk bağlantının başlattığı servis bu ayarları alır; değişiklik için kendi servisinizi durdurup yeniden başlatın. Derinlik sınırındaki ajana delegasyon bağlantısı verilmez; servis de ayrıca sınırı denetler. Sağlayıcıların izlenmeyen native ajan araçları kapalı kalır.
+Servis başlamadan önce `ORCHESTRATOR_MAX_DEPTH` (1–8) ve `ORCHESTRATOR_CONCURRENCY_PER_DEPTH` (`unlimited` varsayılanı veya pozitif güvenli tamsayı) ile sınırları değiştirebilirsiniz. İlk bağlantının başlattığı servis bu ayarları alır; değişiklik için kendi servisinizi durdurup yeniden başlatın. Derinlik sınırındaki ajana delegasyon bağlantısı verilmez; servis de ayrıca sınırı denetler. Sağlayıcıların izlenmeyen native ajan araçları kapalı kalır.
 
 ## Kesinti ve devam etme
 

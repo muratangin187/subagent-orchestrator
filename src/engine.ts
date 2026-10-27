@@ -46,12 +46,19 @@ export class Engine {
   constructor(
     readonly store: Store,
     private factory: DriverFactory,
-    readonly maxConcurrency = 4,
+    readonly maxConcurrency: number | null = null,
     readonly maxDepth = 3,
     private runTimeoutMs = 30 * 60_000,
     private workspaceRoot?: string,
     readonly devices?: Devices,
   ) {
+    if (
+      maxConcurrency !== null &&
+      (!Number.isSafeInteger(maxConcurrency) || maxConcurrency < 1)
+    )
+      throw new Error(
+        "Concurrency must be a positive safe integer or null (unlimited)",
+      );
     this.changes.setMaxListeners(0);
     initVisuals(store);
   }
@@ -381,7 +388,9 @@ export class Engine {
           providers: await providerCapabilities(),
           ...this.devices?.public(),
           maxConcurrencyPerDepth: this.maxConcurrency,
-          maxProviderSessions: this.maxConcurrency * this.maxDepth,
+          maxProviderSessions: null,
+          concurrencyMode:
+            this.maxConcurrency === null ? "unlimited" : "per-depth",
           maxDepth: this.maxDepth,
           notifications: "durable cursor polling; wait_for_task",
           parentContext: "explicit messages only",
@@ -615,9 +624,15 @@ export class Engine {
     }
     for (const t of this.store.tasks()) {
       if (
-        [...this.active.keys()].filter(
-          (id) => this.store.task(id).depth === t.depth,
-        ).length >= this.maxConcurrency
+        this.maxConcurrency !== null &&
+        [...this.active.keys()].filter((id) => {
+          const activeTask = this.store.task(id);
+          return (
+            activeTask.depth === t.depth &&
+            !terminal(activeTask.status) &&
+            activeTask.status !== "waiting_children"
+          );
+        }).length >= this.maxConcurrency
       )
         continue;
       // Shared cwd is not a scheduler lease. Capacity and permission ceilings

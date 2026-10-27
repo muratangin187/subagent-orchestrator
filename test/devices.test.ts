@@ -138,3 +138,75 @@ test("remote uncertainty is durable and never schedules an automatic retry", asy
     store.close();
   }
 });
+
+test("unlimited scheduler admits concurrent work across devices without a global session cap", async () => {
+  const home = mkdtempSync(join(tmpdir(), "devices-unlimited-"));
+  writeFileSync(
+    join(home, "devices.json"),
+    JSON.stringify({
+      localId: "xps",
+      defaultId: "xps",
+      coordinatorSshHost: "xps",
+      devices: [
+        { id: "xps", name: "XPS", cwd: home },
+        {
+          id: "macbook",
+          name: "Mac",
+          cwd: "/remote/work",
+          sshHost: "mac",
+          command: ["node", "worker"],
+        },
+      ],
+    }),
+  );
+  const store = new Store(":memory:");
+  const started: string[] = [];
+  const engine = new Engine(
+    store,
+    (_provider, task) => {
+      let finish: () => void = () => {};
+      return {
+        run: async (ctx) => {
+          started.push(task!.deviceId!);
+          ctx.session(`native-${task!.id}`);
+          await new Promise<void>((resolve) => {
+            finish = resolve;
+          });
+          return "done";
+        },
+        steer: async () => {},
+        interrupt: async () => finish(),
+        close: async () => finish(),
+      };
+    },
+    null,
+    3,
+    10000,
+    home,
+    new Devices(home, home),
+  );
+  try {
+    for (let i = 0; i < 14; i++)
+      await engine.call(
+        {
+          id: "unlimited-devices",
+          cwd: home,
+          ceiling: "read-only",
+          interactionMode: "default",
+        },
+        "delegate_task",
+        { task: "hold", deviceId: i % 2 ? "macbook" : "xps" },
+      );
+    for (let i = 0; started.length < 14 && i < 100; i++)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(started.filter((id) => id === "macbook").length, 7);
+    assert.equal(started.filter((id) => id === "xps").length, 7);
+    assert.ok(
+      store.tasks().every((t) => t.status === "running" && t.sessionId),
+    );
+  } finally {
+    await engine.close();
+    store.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
