@@ -33,3 +33,13 @@ Source review is not a claim of native end-to-end coverage. External file picker
 - Android Kotlin compile and unit tests; release lint/build and native delivery verified separately in the release record.
 
 Independent Sol review found no concrete blockers; native keyboard/sheet checks remain a separate release gate. No new UI framework or animation dependency was added.
+
+## Delivery evidence
+
+Application commit `94385cf` was packaged and installed on Mac and the paired Samsung SM-A165F. Android release lint/unit/build passed with Android Studio JBR, existing Firebase configuration and signing lineage. Installation used an in-place update.
+
+- Desktop: 34 isolated renderer states passed; 92 server tests and 32 desktop tests passed. The 800-message typing run measured 22–30 ms. This is not a multi-hour native performance measurement.
+- Mac: signed package verified; native onboarding/settings opened. The stored connection did not become available during the debug launch. No Keychain bypass, re-pairing, or secret injection was attempted. Connected UI coverage therefore uses the isolated real renderer, not a claimed live Mac session. The app was returned to a normal launch without debug flags.
+- Samsung: connected conversation, jobs sheet/filter/empty state, sessions, new-session form, model sheet, attachment-source sheet, settings and idle voice UI inspected. Model controls remained usable with keyboard open at font scale 1.3; original 1.15 scale restored. No model choice, task message, recording, cancellation or credential change was submitted.
+- Existing file-preview QA conversation had no accessible attachment in its current history. Android PDF/image/HTML viewers were reviewed in source, not asserted as freshly exercised native flows.
+- Synthetic screenshot collection: `.local/qa/full-ui-20261027/desktop/`; Mac settings capture alongside it. These artifacts are intentionally not committed.
