@@ -18,7 +18,7 @@ import { WorkGroup } from "./WorkGroup";
 import { workSlots } from "./timeline.mjs";
 import { chatStatus } from "./chat-status.mjs";
 import { AttachmentPreview } from "./AttachmentPreview";
-import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -110,6 +110,39 @@ function Badge({ task }: { task: Task }) {
 type Route = { view: string; selected: string; external?: Native | null };
 const routeKey = (r: Route) =>
   r.view === "chat" || r.view === "assistant" ? "chat:" + r.selected : r.view;
+const MessageMarkdown = React.memo(function MessageMarkdown({
+  text,
+  onLink,
+}: {
+  text: string;
+  onLink: (
+    href: string | undefined,
+    event: React.MouseEvent<HTMLAnchorElement>,
+  ) => void;
+}) {
+  return (
+    <Markdown
+      urlTransform={(url) =>
+        sessionLinkId(url) || url.startsWith("file:")
+          ? url
+          : /^(https?:|mailto:|\/|#)/i.test(url)
+            ? url
+            : ""
+      }
+      remarkPlugins={[remarkGfm]}
+      components={{
+        a: ({ href, children }) => (
+          <a href={href} onClick={(e) => onLink(href, e)}>
+            {children}
+          </a>
+        ),
+        img: ({ alt }) => <span className="quiet">[Görsel: {alt}]</span>,
+      }}
+    >
+      {text}
+    </Markdown>
+  );
+});
 function App({
   paneId,
   selectedId,
@@ -228,12 +261,25 @@ function App({
   const children = ordered(
     snap.tasks.filter((t) => t.parentTaskId === task?.id),
   );
-  const workflowKey = workflowPreferenceKey(origin, selected === "assistant" ? snap.assistantId : selected);
-  const [workflowPreference, setWorkflowPreference] = useState({ key: "", enabled: false });
-  const showDescendants = workflowPreference.key === workflowKey
-    ? workflowPreference.enabled : loadWorkflowPreference(localStorage, workflowKey);
-  const workflow: { task: Task; depth: number; path: string[] }[] = external ? [] : workflowTree(snap.tasks,
-    selected === "assistant" ? snap.assistantId : selected, false);
+  const workflowKey = workflowPreferenceKey(
+    origin,
+    selected === "assistant" ? snap.assistantId : selected,
+  );
+  const [workflowPreference, setWorkflowPreference] = useState({
+    key: "",
+    enabled: false,
+  });
+  const showDescendants =
+    workflowPreference.key === workflowKey
+      ? workflowPreference.enabled
+      : loadWorkflowPreference(localStorage, workflowKey);
+  const workflow: { task: Task; depth: number; path: string[] }[] = external
+    ? []
+    : workflowTree(
+        snap.tasks,
+        selected === "assistant" ? snap.assistantId : selected,
+        false,
+      );
   const workflowDirect = workflow.filter((entry) => entry.depth === 0);
   const workflowRows = showDescendants ? workflow : workflowDirect;
   const draft = drafts[selected] || "";
@@ -283,6 +329,7 @@ function App({
     if (gen !== epoch.current || pick !== selection.current) return;
     setHistoryLoaded(true);
     setEvents((prev) => {
+      if (!r.messages.length) return prev;
       const merged = new Map(
         [...prev, ...r.messages].map((e: Event) => [e.id, e]),
       );
@@ -983,7 +1030,62 @@ function App({
   ).filter((t) =>
     title(t).toLocaleLowerCase("tr").includes(query.toLocaleLowerCase("tr")),
   );
-  const groupedWork = workSlots(events, messages);
+  const linkHandler = useRef<
+    (
+      href: string | undefined,
+      event: React.MouseEvent<HTMLAnchorElement>,
+    ) => void
+  >(() => {});
+  linkHandler.current = (href, e) => {
+    e.preventDefault();
+    const linkedId = sessionLinkId(href);
+    if (linkedId) {
+      const linked = snap.tasks.find((t) => t.id === linkedId);
+      if (!linked) {
+        setError("Bu oturum bulunamadı veya artık erişilemiyor.");
+        return;
+      }
+      const id = linkedId === snap.assistantId ? "assistant" : linkedId;
+      if (e.shiftKey) onSplit(id);
+      else
+        visit({
+          view: id === "assistant" ? "assistant" : "chat",
+          selected: id,
+        });
+      return;
+    }
+    if (href)
+      void work(async () => {
+        if (href.startsWith("/") || href.startsWith("file:")) {
+          const file = await request("/v1/artifacts/open", {
+            path: href,
+            deviceId:
+              task?.deviceId || external?.deviceId || snap.localDeviceId,
+          });
+          if (
+            !/\.(html?|pdf|png|jpe?g|webp|gif|txt|md|markdown|json|csv|log|ts|tsx|js|jsx|py|css|yaml|yml|xml)$/i.test(
+              file.name,
+            ) ||
+            file.size > 5 * 1024 * 1024
+          ) {
+            await window.desktop.saveAttachment(file.id);
+          } else
+            setPreview(
+              file.content === undefined
+                ? await request("/v1/attachments/" + file.id)
+                : file,
+            );
+        } else await window.desktop.openLink(href);
+      });
+  };
+  const messageLink = useRef(
+    (href: string | undefined, event: React.MouseEvent<HTMLAnchorElement>) =>
+      linkHandler.current(href, event),
+  );
+  const groupedWork = useMemo(
+    () => workSlots(events, messages),
+    [events, messages],
+  );
   const heading =
     external?.title ||
     (selected === "assistant" ? "Asistan" : task ? title(task) : "Sohbet");
@@ -1016,6 +1118,64 @@ function App({
         <Columns2 size={16} />
       </button>
     </div>
+  );
+  // Draft and snapshot updates must not rebuild the entire conversation tree.
+  // Link actions use the current pane state through messageLink's stable ref.
+  const renderedMessages = useMemo(
+    () =>
+      messages.map((m) => (
+        <React.Fragment key={m.id}>
+          {groupedWork.before.get(m.id)?.map((group: any) => (
+            <WorkGroup key={group.id} run={group} />
+          ))}
+          {m.visual ? (
+            <InlineVisual visual={m.visual} />
+          ) : (
+            <article className={"message " + m.role}>
+              <div className="message-body">
+                <MessageMarkdown text={m.text} onLink={messageLink.current} />
+                {m.attachments?.map((a) => (
+                  <button
+                    className="attachment"
+                    key={a.id}
+                    onClick={() =>
+                      void work(async () =>
+                        setPreview(await request("/v1/attachments/" + a.id)),
+                      )
+                    }
+                  >
+                    <FileText size={17} />
+                    {a.name}
+                    <ChevronRight size={14} />
+                  </button>
+                ))}
+              </div>
+              <div className="message-actions">
+                <CopyMessage text={m.text} />
+                {m.role === "assistant" && selected === "assistant" && (
+                  <button
+                    aria-label="Yanıtı seslendir"
+                    title="Yanıtı seslendir"
+                    onClick={() => void work(() => speak(m))}
+                  >
+                    <Volume2 size={13} />
+                    Seslendir
+                  </button>
+                )}
+                {m.created && (
+                  <time
+                    className="message-time"
+                    dateTime={new Date(m.created).toISOString()}
+                  >
+                    {time(m.created)}
+                  </time>
+                )}
+              </div>
+            </article>
+          )}
+        </React.Fragment>
+      )),
+    [messages, groupedWork, selected],
   );
   return (
     <div
@@ -1302,7 +1462,11 @@ function App({
                 )}
                 {!messages.length && !historyLoaded && !external ? (
                   <div className="chat-empty" role="status">
-                    <p>{offline ? "Sohbet geçmişi için bağlantı bekleniyor…" : "Sohbet yükleniyor…"}</p>
+                    <p>
+                      {offline
+                        ? "Sohbet geçmişi için bağlantı bekleniyor…"
+                        : "Sohbet yükleniyor…"}
+                    </p>
                   </div>
                 ) : !messages.length ? (
                   <div className="chat-empty">
@@ -1332,141 +1496,7 @@ function App({
                     </div>
                   </div>
                 ) : (
-                  <>
-                    {messages.map((m) => (
-                      <React.Fragment key={m.id}>
-                        {groupedWork.before.get(m.id)?.map((group: any) => (
-                          <WorkGroup key={group.id} run={group} />
-                        ))}
-                        {m.visual ? (
-                          <InlineVisual visual={m.visual} />
-                        ) : (
-                          <article className={"message " + m.role}>
-                            <div className="message-body">
-                              <Markdown
-                                urlTransform={(url) =>
-                                  (sessionLinkId(url) || url.startsWith("file:"))
-                                    ? url
-                                    : /^(https?:|mailto:|\/|#)/i.test(url)
-                                      ? url
-                                      : ""
-                                }
-                                remarkPlugins={[remarkGfm]}
-                                components={{
-                                  a: ({ href, children }) => (
-                                    <a
-                                      href={href}
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        const linkedId = sessionLinkId(href);
-                                        if (linkedId) {
-                                          const linked = snap.tasks.find((t) => t.id === linkedId);
-                                          if (!linked) { setError("Bu oturum bulunamadı veya artık erişilemiyor."); return; }
-                                          const id = linkedId === snap.assistantId ? "assistant" : linkedId;
-                                          if (e.shiftKey) onSplit(id);
-                                          else visit({ view: id === "assistant" ? "assistant" : "chat", selected: id });
-                                          return;
-                                        }
-                                        if (href)
-                                          void work(async () => {
-                                            if (
-                                              href.startsWith("/") ||
-                                              href.startsWith("file:")
-                                            ) {
-                                              const file = await request(
-                                                "/v1/artifacts/open",
-                                                {
-                                                  path: href,
-                                                  deviceId:
-                                                    task?.deviceId ||
-                                                    external?.deviceId ||
-                                                    snap.localDeviceId,
-                                                },
-                                              );
-                                              if (
-                                                !/\.(html?|pdf|png|jpe?g|webp|gif|txt|md|markdown|json|csv|log|ts|tsx|js|jsx|py|css|yaml|yml|xml)$/i.test(
-                                                  file.name,
-                                                ) ||
-                                                file.size > 5 * 1024 * 1024
-                                              ) {
-                                                await window.desktop.saveAttachment(
-                                                  file.id,
-                                                );
-                                              } else
-                                                setPreview(
-                                                  file.content === undefined
-                                                    ? await request(
-                                                        "/v1/attachments/" +
-                                                          file.id,
-                                                      )
-                                                    : file,
-                                                );
-                                            } else
-                                              await window.desktop.openLink(
-                                                href,
-                                              );
-                                          });
-                                      }}
-                                    >
-                                      {children}
-                                    </a>
-                                  ),
-                                  img: ({ alt }) => (
-                                    <span className="quiet">
-                                      [Görsel: {alt}]
-                                    </span>
-                                  ),
-                                }}
-                              >
-                                {m.text}
-                              </Markdown>
-                              {m.attachments?.map((a) => (
-                                <button
-                                  className="attachment"
-                                  key={a.id}
-                                  onClick={() =>
-                                    void work(async () =>
-                                      setPreview(
-                                        await request(
-                                          "/v1/attachments/" + a.id,
-                                        ),
-                                      ),
-                                    )
-                                  }
-                                >
-                                  <FileText size={17} />
-                                  {a.name}
-                                  <ChevronRight size={14} />
-                                </button>
-                              ))}
-                            </div>
-                            <div className="message-actions">
-                              <CopyMessage text={m.text} />
-                              {m.role === "assistant" &&
-                                selected === "assistant" && (
-                                  <button
-                                    aria-label="Yanıtı seslendir"
-                                    title="Yanıtı seslendir"
-                                    onClick={() => void work(() => speak(m))}
-                                  >
-                                    <Volume2 size={13} />
-                                    Seslendir
-                                  </button>
-                                )}
-                            {m.created && (
-                              <time
-                                className="message-time"
-                                dateTime={new Date(m.created).toISOString()}
-                              >
-                                {time(m.created)}
-                              </time>
-                            )}
-                            </div>
-                          </article>
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </>
+                  <>{renderedMessages}</>
                 )}
                 {!external &&
                   groupedWork.tail.map((group: any) => (
@@ -1487,22 +1517,22 @@ function App({
                       <p className="queued-message-text">{q.text}</p>
                       <div className="queued-message-footer">
                         <span>Mevcut yanıtın ardından gönderilecek</span>
-                      {task?.provider === "codex" && (
-                        <button
-                          disabled={busy}
-                          onClick={() =>
-                            void work(async () => {
-                              await request("/v1/messages/steer", {
-                                taskId: q.taskId,
-                                commandId: q.id,
-                                clientRequestId: "steer:" + q.id,
-                              });
-                            })
-                          }
-                        >
-                          Şimdi yönlendir
-                        </button>
-                      )}
+                        {task?.provider === "codex" && (
+                          <button
+                            disabled={busy}
+                            onClick={() =>
+                              void work(async () => {
+                                await request("/v1/messages/steer", {
+                                  taskId: q.taskId,
+                                  commandId: q.id,
+                                  clientRequestId: "steer:" + q.id,
+                                });
+                              })
+                            }
+                          >
+                            Şimdi yönlendir
+                          </button>
+                        )}
                       </div>
                     </aside>
                   ))}
@@ -1771,41 +1801,107 @@ function App({
                     <Activity size={16} />
                     Çalışma akışı
                   </h3>
-                  <span className="count" title="Doğrudan bağlı işler">{workflowDirect.length}</span>
+                  <span className="count" title="Doğrudan bağlı işler">
+                    {workflowDirect.length}
+                  </span>
                 </div>
                 <p className="quiet">
-                  {workflowDirect.length} doğrudan · {workflow.length} toplam · {workflow.filter(({ task: t }) => isActive(t)).length} aktif (toplam)
+                  {workflowDirect.length} doğrudan · {workflow.length} toplam ·{" "}
+                  {workflow.filter(({ task: t }) => isActive(t)).length} aktif
+                  (toplam)
                 </p>
                 <label className="quiet">
-                  <input type="checkbox" checked={showDescendants} onChange={(e) => {
-                    const enabled = e.target.checked;
-                    setWorkflowPreference({ key: workflowKey, enabled });
-                    try { localStorage.setItem(workflowKey, String(enabled)); } catch { /* Current view remains usable. */ }
-                  }} /> Alt işleri de göster
+                  <input
+                    type="checkbox"
+                    checked={showDescendants}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setWorkflowPreference({ key: workflowKey, enabled });
+                      try {
+                        localStorage.setItem(workflowKey, String(enabled));
+                      } catch {
+                        /* Current view remains usable. */
+                      }
+                    }}
+                  />{" "}
+                  Alt işleri de göster
                 </label>
-                {workflowRows.filter(({ task: t }) => isActive(t)).map(({ task: t, depth, path }) => (
-                  <div className="workflow-card" key={t.id} style={{ marginLeft: Math.min(depth, 6) * 16 }}>
-                    {depth > 0 && <small className="quiet">{path.join(" → ")}</small>}
-                    {row(t)}
-                    <small>{labels[t.status] || t.status} · Tur süresi {elapsedLabel(t)}</small>
-                    {t.quiet && <p className="quiet">10 dk boyunca etkinlik alınmadı · Kontrol gerekli</p>}
-                  </div>
-                ))}
-                {workflowRows.some(({task:t})=>resultNeedsAttention(t)) && <section aria-label="Yanıtı beklenen sonuçlar">
-                  <h4>Yanıtı beklenen sonuçlar</h4>
-                  {workflowRows.filter(({task:t})=>resultNeedsAttention(t)).map(({task:t})=><div className="workflow-card" key={t.id}>
-                    {row(t)}<p>{resultDeliveryLabel(t)}</p>
-                  </div>)}
-                </section>}
-                {workflowRows.some(({ task: t }) => !isActive(t) && !resultNeedsAttention(t)) && <details className="workflow-completed">
-                  <summary>Sonlanan işler ({workflowRows.filter(({ task: t }) => !isActive(t) && !resultNeedsAttention(t)).length})</summary>
-                  {workflowRows.filter(({ task: t }) => !isActive(t) && !resultNeedsAttention(t)).sort((a,b) => b.task.updatedAt - a.task.updatedAt).map(({ task: t, depth, path }) => (
-                    <div className="workflow-card" key={t.id} style={{ marginLeft: Math.min(depth, 6) * 16 }}>
-                      {depth > 0 && <small className="quiet">{path.join(" → ")}</small>}{row(t)}
-                      <small>{labels[t.status] || t.status} · Tur süresi {elapsedLabel(t)}</small>
+                {workflowRows
+                  .filter(({ task: t }) => isActive(t))
+                  .map(({ task: t, depth, path }) => (
+                    <div
+                      className="workflow-card"
+                      key={t.id}
+                      style={{ marginLeft: Math.min(depth, 6) * 16 }}
+                    >
+                      {depth > 0 && (
+                        <small className="quiet">{path.join(" → ")}</small>
+                      )}
+                      {row(t)}
+                      <small>
+                        {labels[t.status] || t.status} · Tur süresi{" "}
+                        {elapsedLabel(t)}
+                      </small>
+                      {t.quiet && (
+                        <p className="quiet">
+                          10 dk boyunca etkinlik alınmadı · Kontrol gerekli
+                        </p>
+                      )}
                     </div>
                   ))}
-                </details>}
+                {workflowRows.some(({ task: t }) =>
+                  resultNeedsAttention(t),
+                ) && (
+                  <section aria-label="Yanıtı beklenen sonuçlar">
+                    <h4>Yanıtı beklenen sonuçlar</h4>
+                    {workflowRows
+                      .filter(({ task: t }) => resultNeedsAttention(t))
+                      .map(({ task: t }) => (
+                        <div className="workflow-card" key={t.id}>
+                          {row(t)}
+                          <p>{resultDeliveryLabel(t)}</p>
+                        </div>
+                      ))}
+                  </section>
+                )}
+                {workflowRows.some(
+                  ({ task: t }) => !isActive(t) && !resultNeedsAttention(t),
+                ) && (
+                  <details className="workflow-completed">
+                    <summary>
+                      Sonlanan işler (
+                      {
+                        workflowRows.filter(
+                          ({ task: t }) =>
+                            !isActive(t) && !resultNeedsAttention(t),
+                        ).length
+                      }
+                      )
+                    </summary>
+                    {workflowRows
+                      .filter(
+                        ({ task: t }) =>
+                          !isActive(t) && !resultNeedsAttention(t),
+                      )
+                      .sort((a, b) => b.task.updatedAt - a.task.updatedAt)
+                      .map(({ task: t, depth, path }) => (
+                        <div
+                          className="workflow-card"
+                          key={t.id}
+                          style={{ marginLeft: Math.min(depth, 6) * 16 }}
+                        >
+                          {depth > 0 && (
+                            <small className="quiet">{path.join(" → ")}</small>
+                          )}
+                          {row(t)}
+                          <small>
+                            {labels[t.status] || t.status} · Tur süresi{" "}
+                            {elapsedLabel(t)}
+                          </small>
+                        </div>
+                      ))}
+                  </details>
+                )}
                 {!workflowRows.length && (
                   <div className="inspector-empty">
                     <CheckCircle2 size={25} />
@@ -1963,8 +2059,15 @@ function App({
                             {t.provider} · {t.deviceId || "yerel"}
                             {childCount > 0 ? ` · ${childCount} alt görev` : ""}
                           </span>
-                          <span className="quiet">Son hareket {date(t.lastActivityAt ?? t.updatedAt)} · Tur süresi {elapsedLabel(t)}</span>
-                          {t.quiet && <span className="quiet">10 dk boyunca etkinlik alınmadı · Kontrol gerekli</span>}
+                          <span className="quiet">
+                            Son hareket {date(t.lastActivityAt ?? t.updatedAt)}{" "}
+                            · Tur süresi {elapsedLabel(t)}
+                          </span>
+                          {t.quiet && (
+                            <span className="quiet">
+                              10 dk boyunca etkinlik alınmadı · Kontrol gerekli
+                            </span>
+                          )}
                         </div>
                       </button>
                       <button

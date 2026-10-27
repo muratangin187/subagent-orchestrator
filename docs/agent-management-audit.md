@@ -136,3 +136,21 @@ New behavior separates execution status from result delivery. Unresolved results
 The workspace notification pump now routes future child results to their completed job owner as well as the persistent assistant. Routing is receipt/cursor based, including bounded-batch overflow and notices arriving during reconciliation; completion timestamps are not used to discard notices. Failed, cancelled, quota/capacity-blocked and recovery-required owners need explicit continuation. On upgrade, a persisted notification floor prevents replay of historical nested jobs. An owner which already manually read a result can conservatively receive one additional reconciliation turn; avoiding that safely requires an explicit consumption receipt, not a timing heuristic.
 
 Regression coverage includes nested owner→assistant handback, overflow, a second result arriving during reconciliation, upgrade without historical replay, and commentary followed by provider failure. **91 server and 32 desktop tests pass**. The desktop renderer fixture verifies unresolved results remain visible outside the collapsed completed section. Sol 6.1 identified the initial timestamp race and approved its receipt-based replacement. Native device verification is recorded in the delivery record after installation.
+
+
+### Desktop responsiveness after long conversations
+
+A synthetic full-renderer replay reproduced typing latency increasing from about
+25 ms at 80 Markdown messages to 175–202 ms at 800 on the same Linux QA host.
+The message tree and Markdown parsing repeated on draft changes; empty event
+polls also replaced the event array. Memoize the conversation tree and Markdown,
+forward link actions through current pane state, memoize work grouping, and retain
+the event array on empty polls. The same 800-message scenario then measured
+22–37 ms. This is a renderer responsiveness result, not proof of a memory leak
+or a native Mac benchmark.
+
+Run `node apps/desktop/test/performance.qa.mjs` after building the desktop client.
+The fixture grows history in 200-event pages, exercises typing, twenty idle
+polls, a newly completed message, and delta-to-final streaming. It uses synthetic
+data and never submits production messages. Its 100 ms warm typing budget is
+intended for local performance regression checks, not heterogeneous CI runners.
