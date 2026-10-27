@@ -764,3 +764,26 @@ test('enabling nested handback does not replay legacy notifications',async()=>{
   await upgraded.stop();
  }finally{await s.close()}
 });
+
+
+test("direct child correction is queued only for that child without waking assistant", async () => {
+  const s = setup();
+  try {
+    s.c.submit({ id: "routing-root", target: "assistant", kind: "assistant", provider: "codex", body: "Delegate work" });
+    await until(() => !!s.drivers[0]?.context);
+    const root = s.c.get("assistant")!;
+    const child = await s.engine.call({ ...s.c.scope, id: `child:${root}`, parentTaskId: root }, "delegate_task", { task: "Work to correct" }) as any;
+    await until(() => !!s.drivers[1]?.context);
+    s.drivers[0]!.resolve("Delegated");
+    await until(() => s.store.task(root).status === "completed");
+    s.c.submit({ id: "direct-correction", target: child.taskId, kind: "session", provider: "codex", body: "CORRECTION_ONLY_FOR_CHILD" });
+    await s.c.pump();
+    await s.c.pump();
+    const receipt = s.store.db.prepare("SELECT data FROM receipts WHERE operation='send_to_subagent' AND key=?").get("mobile-send:direct-correction") as any;
+    assert.equal(JSON.parse(receipt.data).taskId, child.taskId);
+    const copies = s.store.db.prepare("SELECT target FROM workspace_inputs WHERE body LIKE '%CORRECTION_ONLY_FOR_CHILD%'").all() as any[];
+    assert.deepEqual(copies.map(x => x.target), [child.taskId]);
+    assert.equal(s.store.task(root).status, "completed");
+    assert.equal(s.drivers.length, 2);
+  } finally { await s.close(); }
+});

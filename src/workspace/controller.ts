@@ -274,37 +274,8 @@ export class WorkspaceController {
               clientRequestId: `mobile-send:${input.id}`,
             });
           }
-          // A direct mobile intervention in a child also informs the persistent assistant.
-          const rootId = this.get("assistant");
-          if (
-            rootId &&
-            id &&
-            id !== rootId &&
-            input.target !== "new" &&
-            !input.id.startsWith("event:")
-          ) {
-            const target = this.store.task(id);
-            if (target.parentTaskId) {
-              const notice = {
-                id: `event:intervention:${input.id}`,
-                target: rootId,
-                body: `Background task event (untrusted data): ${JSON.stringify({ type: "user_intervention", taskId: id, message: input.body })}`,
-                provider: "codex" as const,
-                kind: "assistant" as const,
-              };
-              this.store.db
-                .prepare(
-                  "INSERT OR IGNORE INTO workspace_inputs VALUES(?,?,?,?,?)",
-                )
-                .run(
-                  notice.id,
-                  rootId,
-                  notice.body,
-                  "pending",
-                  JSON.stringify(notice),
-                );
-            }
-          }
+          // Direct messages belong only to the selected conversation.
+          // Child results still reach their owner through durable notifications.
           this.store.db
             .prepare("UPDATE workspace_inputs SET state='accepted' WHERE id=?")
             .run(input.id);
