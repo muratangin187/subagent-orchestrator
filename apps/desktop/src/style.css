@@ -1639,3 +1639,9 @@ main > header { padding-left: 88px; }
 .modal .page { padding: 0; }
 .modal .session-list { max-height: 65vh; overflow-y: auto; }
 @media (max-width: 900px) { .app { grid-template-columns: minmax(0, 1fr); } .today { display: none; } }
+
+.workflow-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-top: 10px; background: var(--surface); }
+.workflow-card .task-row { padding: 4px 0 8px; }
+.workflow-card > small { display: block; padding-top: 3px; }
+.workflow-completed { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 14px; }
+.workflow-completed > summary { cursor: pointer; }

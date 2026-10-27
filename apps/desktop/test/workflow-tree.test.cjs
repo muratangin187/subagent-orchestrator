@@ -27,3 +27,10 @@ test('preference reload is connection and conversation scoped; missing or inacce
  assert.equal(load(storage,key('serverB','A')),false);
  assert.equal(load({getItem(){throw Error('denied')}},'key'),false);
 });
+
+test('elapsed time uses current run and freezes after completion', async () => {
+  const {elapsedLabel}=await import('../src/workflow-tree.mjs');
+  const task={status:'running',createdAt:0,runCreatedAt:60_000,updatedAt:80_000};
+  assert.equal(elapsedLabel(task,180_000),'2 dk');
+  assert.equal(elapsedLabel({...task,status:'completed',runFinishedAt:120_000},999_000),'1 dk');
+});

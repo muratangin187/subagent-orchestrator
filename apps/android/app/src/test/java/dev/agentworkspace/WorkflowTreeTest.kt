@@ -23,4 +23,10 @@ class WorkflowTreeTest {
   assertNotEquals(workflowPreferenceKey("one","A"),workflowPreferenceKey("two","A"))
   assertNotEquals(workflowPreferenceKey("one","A"),workflowPreferenceKey("one","B"))
  }
+ @Test fun elapsedUsesRunStartAndFreezesOnCompletion() {
+  val t=task("x","root").put("createdAt",0).put("runCreatedAt",60000).put("runStartedAt",120000)
+  assertEquals("1 dk", workflowElapsed(t,180000))
+  t.put("status","completed").put("runFinishedAt",240000)
+  assertEquals("2 dk", workflowElapsed(t,999000))
+ }
 }

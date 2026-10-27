@@ -1,5 +1,4 @@
-import { SESSION_LINK_INSTRUCTIONS } from "../workspace/session-links.js";
-import { VISUAL_INSTRUCTIONS } from "../workspace/visuals.js";
+import { providerInstructions } from "./instructions.js";
 import { query, type Query } from "@anthropic-ai/claude-agent-sdk";
 import { realpath } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
@@ -75,12 +74,7 @@ export class ClaudeDriver implements Driver {
           ? { standalone_children: { type: "stdio", ...ctx.delegation } }
           : {},
         systemPrompt:
-          (ctx.task.instructions ??
-            "You are a delegated agent. " +
-              (ctx.delegation
-                ? "You can delegate subtasks using standalone_children MCP tools. The server automatically binds children to your task. Wait for child results before reporting a combined outcome. Use only this MCP for delegation; never native agent tools or shell-spawned agents."
-                : "Delegation depth limit reached. Do not spawn further agents.")) +
-          (ctx.delegation ? "\n" + VISUAL_INSTRUCTIONS : "") + "\n" + SESSION_LINK_INSTRUCTIONS,
+          providerInstructions(ctx),
         tools,
         disallowedTools: ["Agent", "Task", "Skill", "EnterWorktree"],
         permissionMode: "default",
@@ -167,6 +161,12 @@ export class ClaudeDriver implements Driver {
               payload: { itemId: streamMessageId, text: event.delta.text },
             });
         } else if (message.type === "result") {
+          ctx.event({ type: "provider_usage", payload: {
+            provider: "claude", sessionId: message.session_id,
+            usage: message.usage, modelUsage: message.modelUsage,
+            sessionEstimatedCostUsd: message.total_cost_usd,
+            costScope: "session-cumulative-estimate",
+          } });
           if (message.subtype === "success")
             return readClaudeSuccess(message) || final;
           throw new Error(

@@ -321,7 +321,7 @@ private fun HtmlPreview(file: File) {
                             "OK",
                             mapOf(
                                 "Content-Security-Policy" to
-                                    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
+                                    "default-src 'none'; object-src 'none'; worker-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
                                 "Cache-Control" to "no-store",
                             ),
                             file.inputStream(),
@@ -370,7 +370,15 @@ private fun HtmlPreview(file: File) {
                         override fun shouldOverrideUrlLoading(
                             view: WebView,
                             request: WebResourceRequest,
-                        ): Boolean = request.url.toString().substringBefore('#') != address
+                        ): Boolean {
+                            if (request.url.toString().substringBefore('#') == address) return false
+                            if (request.isForMainFrame && request.hasGesture() &&
+                                request.url.scheme in listOf("https", "http") && request.url.userInfo == null) {
+                                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, request.url).addCategory(Intent.CATEGORY_BROWSABLE)) }
+                                    .onFailure { Toast.makeText(context, "Bağlantı açılamadı", Toast.LENGTH_SHORT).show() }
+                            }
+                            return true
+                        }
                     }
                 loadUrl(address)
             }

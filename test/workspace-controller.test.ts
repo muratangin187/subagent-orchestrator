@@ -605,3 +605,53 @@ test("visual documents require authentication and task ownership", async () => {
     await s.close();
   }
 });
+
+test('simultaneous child notices resume assistant once and are durable', async () => {
+  const s = setup();
+  try {
+    s.c.submit({id:'batch-root',target:'assistant',kind:'assistant',provider:'codex',body:'work'});
+    await until(() => !!s.drivers[0]?.context);
+    const root = s.c.get('assistant')!;
+    const scope = {...s.c.scope,id:`child:${root}`,parentTaskId:root};
+    const a = await s.engine.call(scope,'delegate_task',{task:'a'}) as any;
+    const b = await s.engine.call(scope,'delegate_task',{task:'b'}) as any;
+    await until(() => s.drivers.length === 3 && !!s.drivers[2]?.context);
+    s.drivers[0]!.resolve('Started');
+    s.drivers[1]!.resolve('first child result');
+    s.drivers[2]!.resolve('second child result');
+    await until(() => [root,a.taskId,b.taskId].every(id => s.store.task(id).status === 'completed'));
+    await s.c.pump();
+    await until(() => !!s.drivers[3]?.context);
+    assert.match(s.drivers[3]!.context.run.prompt,/first child result/);
+    assert.match(s.drivers[3]!.context.run.prompt,/second child result/);
+    assert.equal(s.store.db.prepare('SELECT count(*) AS n FROM workspace_deliveries').get()!.n,2);
+    await s.c.pump();
+    assert.equal(s.drivers.length,4);
+  } finally { await s.close(); }
+});
+
+test('quiet work warns once per run; waiting children and recent activity are not stalls', async () => {
+  const s = setup();
+  try {
+    s.c.submit({id:'quiet-root',target:'assistant',kind:'assistant',provider:'codex',body:'work'});
+    await until(() => !!s.drivers[0]?.context);
+    const root = s.c.get('assistant')!;
+    const scope = {...s.c.scope,id:`child:${root}`,parentTaskId:root};
+    const child = await s.engine.call(scope,'delegate_task',{task:'slow tool'}) as any;
+    await until(() => !!s.drivers[1]?.context);
+    const id = child.taskId;
+    s.store.db.prepare('UPDATE events SET created=? WHERE task_id=?').run(Date.now()-700_000,id);
+    assert.equal(s.c.snapshot().tasks.find(t=>t.id===id)!.quiet,true);
+    (s.c as any).healthCheckedAt=0;
+    await s.c.pump();
+    assert.equal(s.store.db.prepare("SELECT count(*) AS n FROM events WHERE task_id=? AND type='inactivity_warning'").get(id)!.n,1);
+    (s.c as any).healthCheckedAt=0;
+    await s.c.pump();
+    assert.equal(s.store.db.prepare("SELECT count(*) AS n FROM events WHERE task_id=? AND type='inactivity_warning'").get(id)!.n,1);
+    const t=s.store.task(id); t.status='waiting_children';s.store.saveTask(t);
+    assert.equal(s.c.snapshot().tasks.find(t=>t.id===id)!.quiet,false);
+    t.status='running';s.store.saveTask(t);
+    s.drivers[1]!.context.event({type:'tool_output',payload:{text:'progress'}});
+    assert.equal(s.c.snapshot().tasks.find(t=>t.id===id)!.quiet,false);
+  } finally { await s.close(); }
+});

@@ -793,7 +793,7 @@ export class Engine {
           delete t.resultSummary;
           this.store.saveRun(r);
           this.touch(t);
-          if (selection)
+          if (selection && (selection.provider !== previous.provider || selection.model !== previous.model || selection.effort !== previous.effort))
             this.store.event(
               t,
               switched ? "provider_handoff" : "model_changed",

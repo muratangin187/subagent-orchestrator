@@ -8,7 +8,7 @@ import {
   type RenderTask,
 } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { safeHtmlDocument } from "./attachment-html.mjs";
+import { safeHtmlDocument, reportLink } from "./attachment-html.mjs";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 export type Attachment = {
@@ -179,27 +179,33 @@ export function AttachmentPreview({ file }: { file: Attachment }) {
         )}
       </div>
     );
-  if (/\.html?$/i.test(file.name))
-    return (
-      <div className="document-preview">
-        <div className="preview-toolbar">
-          <button onClick={() => setSource((v) => !v)}>
-            {source ? "Önizlemeyi göster" : "Kaynağı göster"}
-          </button>
-          <small>Betikler ve dış bağlantılar kapalı.</small>
-        </div>
-        {source ? (
-          <pre className="file-preview">{text.slice(0, 100000)}</pre>
-        ) : (
-          <iframe
-            className="html-preview"
-            title={file.name + " önizleme"}
-            sandbox=""
-            referrerPolicy="no-referrer"
-            srcDoc={safeHtmlDocument(text)}
-          />
-        )}
-      </div>
-    );
+  if (/\.html?$/i.test(file.name)) return <HtmlReport name={file.name} text={text} />;
   return <pre className="file-preview">{text.slice(0, 100000)}</pre>;
+}
+
+function HtmlReport({ name, text }: { name: string; text: string }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [source, setSource] = useState(false);
+  const [link, setLink] = useState<string | null>(null);
+  useEffect(() => {
+    setLink(null);
+    const receive = (event: MessageEvent) => {
+      const url = reportLink(event, frame.current?.contentWindow);
+      if (url) setLink(url);
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [text]);
+  return <div className="document-preview">
+    <div className="preview-toolbar">
+      <button onClick={() => setSource(v => !v)}>{source ? "Önizlemeyi göster" : "Kaynağı göster"}</button>
+      <small>Yerel etkileşimler açık. Dış bağlantılar tarayıcıda açılır.</small>
+    </div>
+    {link && <div className="preview-toolbar"><span style={{ overflowWrap: "anywhere" }}>{link}</span>
+      <button onClick={() => { void window.desktop.openLink(link); setLink(null); }}>Tarayıcıda aç</button>
+      <button onClick={() => setLink(null)}>Vazgeç</button></div>}
+    {source ? <pre className="file-preview">{text.slice(0, 100000)}</pre> :
+      <iframe ref={frame} className="html-preview" title={name + " önizleme"} sandbox="allow-scripts"
+        referrerPolicy="no-referrer" srcDoc={safeHtmlDocument(text)} />}
+  </div>;
 }

@@ -5,7 +5,7 @@ import { WorkspaceLayout, type PaneProps } from "./WorkspaceLayout";
 import { VoiceDock } from "./VoiceDock";
 import { InlineVisual } from "./InlineVisual";
 import { UsageLimits } from "./UsageLimits";
-import { workflowTree, loadWorkflowPreference, workflowPreferenceKey } from "./workflow-tree.mjs";
+import { elapsedLabel, workflowTree, loadWorkflowPreference, workflowPreferenceKey } from "./workflow-tree.mjs";
 import { taskTree } from "./task-tree.mjs";
 import { ModelPicker, type Selection } from "./ModelPicker";
 import {
@@ -232,7 +232,7 @@ function App({
   const showDescendants = workflowPreference.key === workflowKey
     ? workflowPreference.enabled : loadWorkflowPreference(localStorage, workflowKey);
   const workflow: { task: Task; depth: number; path: string[] }[] = external ? [] : workflowTree(snap.tasks,
-    selected === "assistant" ? snap.assistantId : selected, selected === "assistant");
+    selected === "assistant" ? snap.assistantId : selected, false);
   const workflowDirect = workflow.filter((entry) => entry.depth === 0);
   const workflowRows = showDescendants ? workflow : workflowDirect;
   const draft = drafts[selected] || "";
@@ -1001,7 +1001,7 @@ function App({
         <span className="grow">
           <strong>{title(t)}</strong>
           <small>
-            {t.deviceId || "local"} · {t.provider} · {time(t.updatedAt)}
+            {t.deviceId || "local"} · {t.provider}
           </small>
         </span>
         <ChevronRight size={15} />
@@ -1777,13 +1777,23 @@ function App({
                     try { localStorage.setItem(workflowKey, String(enabled)); } catch { /* Current view remains usable. */ }
                   }} /> Alt işleri de göster
                 </label>
-                {workflowRows.map(({ task: t, depth, path }) => (
-                  <div key={t.id} style={{ marginLeft: Math.min(depth, 6) * 16 }}>
-                    {depth > 0 && <small className="quiet" title={path.join(" → ")}>{path.join(" → ")}</small>}
+                {workflowRows.filter(({ task: t }) => isActive(t)).map(({ task: t, depth, path }) => (
+                  <div className="workflow-card" key={t.id} style={{ marginLeft: Math.min(depth, 6) * 16 }}>
+                    {depth > 0 && <small className="quiet">{path.join(" → ")}</small>}
                     {row(t)}
-                    <small className="quiet">{labels[t.status] || t.status}</small>
+                    <small>{labels[t.status] || t.status} · Tur süresi {elapsedLabel(t)}</small>
+                    {t.quiet && <p className="quiet">10 dk boyunca etkinlik alınmadı · Kontrol gerekli</p>}
                   </div>
                 ))}
+                {workflowRows.some(({ task: t }) => !isActive(t)) && <details className="workflow-completed">
+                  <summary>Sonlanan işler ({workflowRows.filter(({ task: t }) => !isActive(t)).length})</summary>
+                  {workflowRows.filter(({ task: t }) => !isActive(t)).sort((a,b) => b.task.updatedAt - a.task.updatedAt).map(({ task: t, depth, path }) => (
+                    <div className="workflow-card" key={t.id} style={{ marginLeft: Math.min(depth, 6) * 16 }}>
+                      {depth > 0 && <small className="quiet">{path.join(" → ")}</small>}{row(t)}
+                      <small>{labels[t.status] || t.status} · Tur süresi {elapsedLabel(t)}</small>
+                    </div>
+                  ))}
+                </details>}
                 {!workflowRows.length && (
                   <div className="inspector-empty">
                     <CheckCircle2 size={25} />

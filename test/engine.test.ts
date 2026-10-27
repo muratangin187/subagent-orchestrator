@@ -824,3 +824,16 @@ test("waiting parent releases admission capacity and wakes queued peers", async 
     await s.close();
   }
 });
+
+test('repeating the model selection does not manufacture a model change', async () => {
+  const s=setup();
+  try {
+    const t=await delegate(s.engine,{provider:'codex',model:'test-model',effort:'high'});
+    await tick();
+    s.drivers[0]!.resolve!('done');
+    await tick();
+    await s.engine.call(scope,'send_to_subagent',{taskId:t.taskId,message:'follow up',mode:'queue',selection:{provider:'codex',model:'test-model',effort:'high'}});
+    await tick();await tick();
+    assert.equal(s.store.events(t.taskId,0,200).messages.filter(e=>e.type==='model_changed').length,0);
+  } finally {await s.close()}
+});

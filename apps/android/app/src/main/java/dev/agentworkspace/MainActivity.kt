@@ -204,9 +204,10 @@ fun WorkspaceApp(model: WorkspaceModel) {
     val current = tasks.find { it.optString("id") == selectedId }
     val workflowKey = workflowPreferenceKey(model.repo.vault.url, selectedId)
     var showDescendants by remember(workflowKey) { mutableStateOf(model.repo.local.get(workflowKey) == "true") }
-    val workflow = if (model.nativeSelection != null) emptyList() else workflowTree(tasks, selectedId, model.selected == "assistant")
+    val workflow = if (model.nativeSelection != null) emptyList() else workflowTree(tasks, selectedId, false)
     val directWorkflow = workflow.filter { it.depth == 0 }
     val workflowRows = if (showDescendants) workflow else directWorkflow
+    var showCompletedWork by remember(workflowKey) { mutableStateOf(false) }
     fun rememberPage() {
         val page =
             JSONObject()
@@ -521,17 +522,19 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                 },
                                 label = { Text("Alt işleri de göster") },
                             )
-                            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 180.dp)) {
-                                items(workflowRows, key = { it.task.getString("id") }) { entry ->
-                                    val job = entry.task
-                                    Column(Modifier.padding(start = (entry.depth.coerceAtMost(6) * 12).dp)) {
-                                        if (entry.depth > 0) Text(entry.path.joinToString(" → "), style = MaterialTheme.typography.labelSmall)
-                                        AssistChip(
-                                            onClick = { openTask(job) },
-                                            label = { Text(job.optString("title") + " · " + statusLabel(job.optString("status")), maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                                            leadingIcon = { JobIndicator(job.optString("status")) },
-                                        )
+                            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 260.dp)) {
+                                items(workflowRows.filter { isActiveJob(it.task) }, key = { it.task.getString("id") }) { entry ->
+                                    WorkflowCard(entry, onOpen = { openTask(entry.task) })
+                                }
+                                val completed = workflowRows.filter { !isActiveJob(it.task) }.sortedByDescending { it.task.optLong("updatedAt") }
+                                if (completed.isNotEmpty()) item {
+                                    HorizontalDivider(Modifier.padding(top = 12.dp))
+                                    TextButton(onClick = { showCompletedWork = !showCompletedWork }) {
+                                        Text("${if (showCompletedWork) "▾" else "▸"} Sonlanan işler (${completed.size})")
                                     }
+                                }
+                                if (showCompletedWork) items(completed, key = { it.task.getString("id") }) { entry ->
+                                    WorkflowCard(entry, onOpen = { openTask(entry.task) })
                                 }
                             }
                         }
@@ -1114,5 +1117,18 @@ private fun RawCopyButton(text: String) {
         Icon(Icons.Default.ContentCopy, null, Modifier.size(14.dp))
         Spacer(Modifier.width(6.dp))
         Text(if (copied) "Kopyalandı" else "Kopyala", style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+@Composable
+private fun WorkflowCard(entry: JobTreeRow, onOpen: () -> Unit) {
+    val job = entry.task
+    OutlinedCard(onClick = onOpen, modifier = Modifier.fillMaxWidth().padding(start = (entry.depth.coerceAtMost(6) * 12).dp, top = 8.dp)) {
+        Column(Modifier.padding(12.dp)) {
+            if (entry.depth > 0) Text(entry.path.joinToString(" → "), style = MaterialTheme.typography.labelSmall)
+            Text(job.optString("title"), style = MaterialTheme.typography.titleSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(statusLabel(job.optString("status")) + " · Tur süresi " + workflowElapsed(job), style = MaterialTheme.typography.bodySmall)
+            if (job.optBoolean("quiet")) Text("10 dk boyunca etkinlik alınmadı · Kontrol gerekli", style = MaterialTheme.typography.bodySmall)
+        }
     }
 }

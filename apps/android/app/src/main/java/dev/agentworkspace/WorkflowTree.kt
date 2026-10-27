@@ -25,3 +25,10 @@ fun workflowTree(tasks: List<JSONObject>, rootId: String, activeOnly: Boolean = 
 
 fun workflowPreferenceKey(origin: String, rootId: String): String =
     "workflow.descendants:${origin.length}:$origin:$rootId"
+
+fun workflowElapsed(task: JSONObject, now: Long = System.currentTimeMillis()): String {
+    val terminal = task.optString("status") in listOf("completed", "failed", "cancelled", "recovery_required")
+    val end = task.optLong("runFinishedAt", if (terminal) task.optLong("updatedAt") else now)
+    val minutes = ((end - task.optLong("runStartedAt", task.optLong("runCreatedAt", task.optLong("createdAt")))) / 60000).coerceAtLeast(0)
+    return if (minutes < 1) "<1 dk" else if (minutes < 60) "$minutes dk" else "${minutes / 60} sa ${minutes % 60} dk"
+}

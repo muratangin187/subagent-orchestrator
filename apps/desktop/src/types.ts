@@ -13,6 +13,11 @@ export type Task = {
   conversationKind?: string;
   updatedAt: number;
   createdAt: number;
+  runCreatedAt?: number;
+  runStartedAt?: number;
+  runFinishedAt?: number;
+  lastActivityAt?: number;
+  quiet?: boolean;
   question?: {
     id: string;
     prompt: {

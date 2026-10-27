@@ -4,25 +4,20 @@ const { JSDOM } = require("jsdom");
 const fs = require("node:fs");
 const vm = require("node:vm");
 
-test("HTML keeps layout while removing active content and navigation", async () => {
-  const dom = new JSDOM("");
-  global.window = dom.window;
-  const { safeHtmlDocument } = await import("../src/attachment-html.mjs");
-  const output = safeHtmlDocument(
-    `<style>h1{color:green}</style><h1>Rapor</h1><script>alert(1)</script><iframe srcdoc="x"></iframe><meta http-equiv="refresh" content="0;url=https://bad.test"><base href="https://bad.test"><a href="https://bad.test">link</a><img src="x" onerror="alert(1)"><form action="https://bad.test"><input></form>`,
-  );
+test("HTML retains local report data and controls but blocks embedded documents and network", async () => {
+  global.DOMParser = new JSDOM("").window.DOMParser;
+  const { safeHtmlDocument, reportLink } = await import("../src/attachment-html.mjs");
+  const output = safeHtmlDocument(`<h1>Rapor</h1><script>document.body.dataset.ready='yes'</script><button onclick="this.textContent='ok'">Filter</button><script src="https://bad.test/x.js"></script><iframe srcdoc="x"></iframe><meta http-equiv="refresh" content="0;url=https://bad.test"><base href="https://bad.test"><a href="https://linear.app/test">link</a>`);
   const document = new JSDOM(output).window.document;
-  assert.equal(document.querySelector("h1").textContent, "Rapor");
-  assert.equal(document.querySelector("style").textContent, "h1{color:green}");
-  assert.equal(
-    document.querySelectorAll("script,iframe,base,form,input,[href],[onerror]")
-      .length,
-    0,
-  );
-  const policies = document.querySelectorAll("meta[http-equiv]");
-  assert.equal(policies.length, 1);
-  assert.match(policies[0].content, /default-src 'none'/);
-  assert.match(policies[0].content, /form-action 'none'/);
+  assert.equal(document.querySelector('button').textContent, 'Filter');
+  assert.match(document.documentElement.textContent, /dataset.ready/);
+  assert.equal(document.querySelectorAll('iframe,base,script[src]').length, 0);
+  assert.equal(document.querySelectorAll('meta[http-equiv]').length, 1);
+  assert.match(document.querySelector('meta[http-equiv]').content, /connect-src 'none'/);
+  const frame = {};
+  assert.equal(reportLink({source:frame,data:{type:'report-link',url:'https://linear.app/test'}},frame), 'https://linear.app/test');
+  for (const url of ['javascript:alert(1)','file:///etc/passwd','https://user:pass@site.test']) assert.equal(reportLink({source:frame,data:{type:'report-link',url}},frame),null);
+  assert.equal(reportLink({source:{},data:{type:'report-link',url:'https://site.test'}},frame),null);
 });
 
 test("audio worklet clamps PCM and never echoes microphone to speakers", () => {
