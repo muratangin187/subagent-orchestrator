@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.URLEncoder
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ModelControls(model: WorkspaceModel, snapshot: JSONObject, modifier: Modifier = Modifier) {
     val taskId = if (model.selected == "assistant") snapshot.optString("assistantId") else model.selected
@@ -22,7 +23,6 @@ fun ModelControls(model: WorkspaceModel, snapshot: JSONObject, modifier: Modifie
     var picked by remember(model.selected) { mutableStateOf(model.selections[model.selected]) }
     val selected = picked ?: task
     var open by remember { mutableStateOf(false) }
-    var effortsOpen by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
     LaunchedEffect(device) {
         try {
@@ -35,32 +35,45 @@ fun ModelControls(model: WorkspaceModel, snapshot: JSONObject, modifier: Modifie
     fun choose(value: JSONObject) { picked = value; model.selections[model.selected] = value }
     TextButton(onClick = { open = true }, modifier = modifier) {
         Column(Modifier.fillMaxWidth()) {
-            Text(current?.optString("label") ?: selected?.optString("model")?.takeIf { it.isNotBlank() } ?: "Model seç", maxLines = 1)
+            Text(current?.optString("label") ?: selected?.optString("model")?.takeIf { it.isNotBlank() } ?: "Model seç", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             Text(selected?.optString("effort")?.takeIf { it.isNotBlank() } ?: "Otomatik düşünme", style = MaterialTheme.typography.labelSmall)
         }
     }
-    if(open) AlertDialog(onDismissRequest = { open = false }, title = { Text("Model seç") }, text = {
-        Column {
-        Box {
-            TextButton(onClick = { effortsOpen = true }, enabled = (current?.optJSONArray("efforts")?.length() ?: 0) > 0) { Text(selected?.optString("effort")?.takeIf { it.isNotBlank() } ?: "Otomatik") }
-            DropdownMenu(expanded = effortsOpen, onDismissRequest = { effortsOpen = false }) {
-                val levels = current?.optJSONArray("efforts")
-                (listOf("") + (0 until (levels?.length() ?: 0)).map { levels!!.getString(it) }).forEach { level ->
-                    DropdownMenuItem(text = { Text(level.ifBlank { "Otomatik" }) }, onClick = {
-                        choose(JSONObject().put("provider", current!!.getString("provider")).put("model", current.getString("model")).apply { if(level.isNotBlank()) put("effort", level) }); effortsOpen = false
-                    })
+    if (open) ModalBottomSheet(onDismissRequest = { open = false }) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Model ve düşünme", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                TextButton(onClick = { open = false }) { Text("Bitti") }
+            }
+            OutlinedTextField(value = search, onValueChange = { search = it }, label = { Text("Model ara") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            val levels = current?.optJSONArray("efforts")
+            if (levels != null && levels.length() > 0) {
+                Text("Düşünme seviyesi", style = MaterialTheme.typography.labelMedium)
+                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val choices = listOf("") + (0 until levels.length()).map { levels.getString(it) }
+                    items(choices.size) { index ->
+                        val level = choices[index]
+                        FilterChip(selected = (selected?.optString("effort") ?: "") == level, onClick = {
+                            choose(JSONObject().put("provider", current!!.getString("provider")).put("model", current.getString("model")).apply { if (level.isNotBlank()) put("effort", level) })
+                        }, label = { Text(level.ifBlank { "Otomatik" }) })
+                    }
                 }
             }
-        }
-            OutlinedTextField(value = search, onValueChange = { search = it }, label = { Text("Model ara") })
-            if(error.isNotBlank()) Text(error, style = MaterialTheme.typography.bodySmall)
-            Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
-                models.filter { (it.optString("label") + it.optString("provider")).contains(search, true) }.forEach { row ->
-                    TextButton(onClick = { choose(JSONObject().put("provider", row.getString("provider")).put("model", row.getString("model"))) }, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.fillMaxWidth()) { Text(row.getString("label")); Text(row.getString("provider"), style = MaterialTheme.typography.labelSmall) }
+            if (error.isNotBlank()) Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+                val matching = models.filter { (it.optString("label") + it.optString("provider")).contains(search, true) }
+                if (matching.isEmpty()) item { Text(if (models.isEmpty()) "Model listesi henüz hazır değil" else "Bu aramada model bulunamadı", Modifier.padding(vertical = 20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                items(matching.size) { index ->
+                    val row = matching[index]
+                    val isSelected = row.optString("provider") == selected?.optString("provider") && row.optString("model") == selected?.optString("model")
+                    Surface(onClick = { choose(JSONObject().put("provider", row.getString("provider")).put("model", row.getString("model"))) }, color = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.medium) {
+                        Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(Modifier.weight(1f)) { Text(row.getString("label"), style = MaterialTheme.typography.bodyLarge); Text(row.getString("provider"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            if (isSelected) Text("Seçili", style = MaterialTheme.typography.labelSmall)
+                        }
                     }
                 }
             }
         }
-    }, confirmButton = { TextButton(onClick = { open = false }) { Text("Kapat") } })
+    }
 }

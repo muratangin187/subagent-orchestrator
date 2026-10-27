@@ -43,7 +43,7 @@ fun RichMessageInput(value: String, onValueChange: (String) -> Unit, onFile: (Ur
     BasicTextField(
         state = state,
         modifier = modifier.semantics { contentDescription = "Mesaj" }.contentReceiver(receiver).heightIn(min = 56.dp)
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)).padding(14.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
         lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 5),

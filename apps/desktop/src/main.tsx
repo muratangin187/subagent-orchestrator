@@ -66,6 +66,7 @@ import {
 } from "./types";
 import "./style.css";
 import "./theme.css";
+import "./workspace-design.css";
 function CopyMessage({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
@@ -1220,6 +1221,9 @@ function App({
       <main>
         <header>
           <div className="breadcrumb">
+            <button className="workspace-switcher" onClick={() => setModal("sessions")} aria-label="Sohbetler">
+              <MessageSquare size={17} /><span>Agent Workspace</span>
+            </button>
             {!split && selected !== "assistant" && (
               <button onClick={() => choose("assistant")}>
                 <Sparkles size={16} /> Asistana dön
@@ -1271,15 +1275,6 @@ function App({
               </button>
             )}
 
-            {!split && (
-              <span className="today">
-                {new Date().toLocaleDateString("tr", {
-                  day: "numeric",
-                  month: "long",
-                  weekday: "long",
-                })}
-              </span>
-            )}
             {!split && (
               <button
                 className="icon"
@@ -1790,7 +1785,7 @@ function App({
                   <span>
                     <kbd>↵</kbd> gönder · <kbd>⇧ ↵</kbd> yeni satır
                   </span>
-                  <span>İşler arka planda devam eder.</span>
+                  <span className="composer-recipient" title={heading}>Alıcı: {heading}</span>
                 </div>
               </div>
             </section>
@@ -1915,7 +1910,7 @@ function App({
                 )}
                 {task && (
                   <div className="detail-card">
-                    <span className="eyebrow">OTURUM AYRINTILARI</span>
+                    <h4>Oturum bilgisi</h4>
                     <dl>
                       <dt>Cihaz</dt>
                       <dd>

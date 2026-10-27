@@ -92,7 +92,7 @@ fun workActivitySegments(events: List<JSONObject>): Map<String, WorkActivityRun>
 @Composable
 fun WorkActivityGroup(run: WorkActivityRun) {
     var manual by remember(run.id) { mutableStateOf<Boolean?>(null) }
-    val expanded = manual ?: (run.end == 0L)
+    val expanded = manual ?: false
     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Row(Modifier.fillMaxWidth().clickable { manual = !expanded }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight, "Çalışma ayrıntıları", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.secondary)
@@ -107,7 +107,7 @@ fun WorkActivityGroup(run: WorkActivityRun) {
                 run.items.forEach { item -> key(item.id) { WorkActivityRow(item) } }
             }
         } else if (run.items.isNotEmpty()) {
-            Text("${friendlyToolLabel(run.items.last().title)} · ${if (run.state == "failed") "Hata" else if (run.state == "cancelled") "İptal" else "Tamamlandı"}", Modifier.padding(start = 26.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${friendlyToolLabel(run.items.last().title)} · ${if (run.state == "failed") "Hata" else if (run.state == "cancelled") "İptal" else if (run.end == 0L) "Çalışıyor" else "Tamamlandı"}", Modifier.padding(start = 26.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

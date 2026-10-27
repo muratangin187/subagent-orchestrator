@@ -41,7 +41,7 @@ function Elapsed({ run }: { run: WorkRun }) {
   }, [run.end, run.start]);
   return (
     <>
-      {run.end ? "Worked for" : "Working for"}{" "}
+      {run.end ? "Tamamlandı ·" : "Çalışıyor ·"}{" "}
       {run.start ? duration((run.end || now) - run.start) : "…"}
     </>
   );
@@ -123,7 +123,7 @@ function Item({ item }: { item: WorkItem }) {
 }
 export function WorkGroup({ run }: { run: WorkRun }) {
   const [manual, setManual] = useState<boolean | null>(null);
-  const expanded = manual ?? !run.end;
+  const expanded = manual ?? false;
   const last = run.items.at(-1);
   return (
     <section className="work-group" aria-label="Çalışma ayrıntıları">

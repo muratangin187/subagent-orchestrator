@@ -208,6 +208,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
     val directWorkflow = workflow.filter { it.depth == 0 }
     val workflowRows = if (showDescendants) workflow else directWorkflow
     var showCompletedWork by remember(workflowKey) { mutableStateOf(false) }
+    var showWorkflow by remember(workflowKey) { mutableStateOf(false) }
     fun rememberPage() {
         val page =
             JSONObject()
@@ -238,7 +239,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
     }
     val hasOverlay =
         showVoice ||
-            showSettings || showSessions || showMenu || showJobs ||
+            showSettings || showSessions || showMenu || showJobs || showWorkflow ||
             showNew ||
             showExternal ||
             showAttachmentSource ||
@@ -258,7 +259,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
         model.open(t.getString("id"))
         title = t.optString("title")
         tab = "chat"
-        scope.launch { showJobs = false }
+        scope.launch { showJobs = false; showWorkflow = false }
     }
     if (showJobs) {
         ModalBottomSheet(onDismissRequest = { showJobs = false }) {
@@ -328,6 +329,43 @@ fun WorkspaceApp(model: WorkspaceModel) {
             }
         }
     }
+    if (showWorkflow) {
+        ModalBottomSheet(onDismissRequest = { showWorkflow = false }) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Bu sohbetin işleri", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                IconButton(onClick = { showWorkflow = false }) { Icon(Icons.Default.Close, "Kapat") }
+            }
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
+                            Text("${directWorkflow.size} doğrudan · ${workflow.size} toplam · ${workflow.count { isActiveJob(it.task) }} aktif (toplam)", style = MaterialTheme.typography.labelSmall)
+                            FilterChip(
+                                selected = showDescendants,
+                                onClick = {
+                                    showDescendants = !showDescendants
+                                    model.repo.local.put(workflowKey, showDescendants.toString())
+                                },
+                                label = { Text("Alt işleri de göster") },
+                            )
+                            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 560.dp)) {
+                                items(workflowRows.filter { isActiveJob(it.task) }, key = { it.task.getString("id") }) { entry ->
+                                    WorkflowCard(entry, onOpen = { openTask(entry.task) })
+                                }
+                                val awaiting = workflowRows.filter { resultNeedsAttention(it.task) }
+                                if (awaiting.isNotEmpty()) item { Text("Yanıtı beklenen sonuçlar", style = MaterialTheme.typography.titleSmall) }
+                                items(awaiting, key = { "result:" + it.task.getString("id") }) { entry -> WorkflowCard(entry, onOpen = { openTask(entry.task) }) }
+                                val completed = workflowRows.filter { !isActiveJob(it.task) && !resultNeedsAttention(it.task) }.sortedByDescending { it.task.optLong("updatedAt") }
+                                if (completed.isNotEmpty()) item {
+                                    HorizontalDivider(Modifier.padding(top = 12.dp))
+                                    TextButton(onClick = { showCompletedWork = !showCompletedWork }) {
+                                        Text("${if (showCompletedWork) "▾" else "▸"} Sonlanan işler (${completed.size})")
+                                    }
+                                }
+                                if (showCompletedWork) items(completed, key = { it.task.getString("id") }) { entry ->
+                                    WorkflowCard(entry, onOpen = { openTask(entry.task) })
+                                }
+                            }
+                        }
+        }
+    }
         Scaffold(
             modifier = Modifier.imePadding(),
             topBar = {
@@ -351,19 +389,16 @@ fun WorkspaceApp(model: WorkspaceModel) {
                     },
                     navigationIcon = {
                         if (tab == "chat")
-                            IconButton(onClick = { goBack() }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri")
-                            }
+                            IconButton(onClick = { goBack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri") }
+                        else IconButton(onClick = { showSessions = true }) { Icon(Icons.Default.Forum, "Sohbetler") }
                     },
                     actions = {
                         IconButton(onClick = { showVoice = true }) { Icon(Icons.Default.GraphicEq, "Sesli asistan") }
-                        TextButton(onClick = { scope.launch { showJobs = true } }, modifier = Modifier.semantics { contentDescription = "İşler, $openJobs aktif" }) { Text("$openJobs") }
+                        TextButton(onClick = { scope.launch { showJobs = true } }, modifier = Modifier.semantics { contentDescription = "İşler, $openJobs aktif" }) { Text(if (openJobs > 0) "İşler · $openJobs" else "İşler") }
                         Box {
                             IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, "Sohbet menüsü") }
                             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }, modifier = Modifier.width(300.dp)) {
                                 Column(Modifier.padding(12.dp)) {
-                                    Text("Model ve düşünme", style = MaterialTheme.typography.labelSmall)
-                                    ModelControls(model, s.snapshot, Modifier.fillMaxWidth())
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         UsageLimits(model, current?.optString("deviceId")?.takeIf { it.isNotBlank() } ?: s.snapshot.optString("localDeviceId"), current?.optString("provider") ?: "codex")
                                         Text("Kalan kota", Modifier.padding(start = 8.dp))
@@ -440,37 +475,29 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             }
                         if (dictationState.active && !showVoice) Text(dictationState.phase, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.labelSmall)
                         if (dictationState.error != null && !showVoice) Text(dictationState.error!!, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.Bottom,
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         ) {
-                            key(tab, model.selected, model.nativeSelection?.optString("id")) {
-                                RichMessageInput(value = draft, onValueChange = { changeDraft(it) }, onFile = { model.upload(it) }, modifier = Modifier.weight(1f))
-                            }
-                            IconButton(onClick = { if (dictationState.active) voiceModel.stop() else dictatePermission.launch(android.Manifest.permission.RECORD_AUDIO) }) {
-                                Icon(if (dictationState.active) Icons.Default.Stop else Icons.Default.Mic, if (dictationState.active) "Dikteyi bitir" else "Dikte", tint = MaterialTheme.colorScheme.primary)
-                            }
-                            IconButton(
-                                onClick = { showAttachmentSource = true },
-                                enabled = !s.loading && s.attached.size < 5,
-                            ) {
-                                Icon(Icons.Default.AttachFile, "Dosya ekle")
-                            }
-                            IconButton(
-                                onClick = {
-                                    if (model.nativeSelection != null) showExternal = true
-                                    else {
-                                        model.send(draft)
-                                        changeDraft("")
+                            Column(Modifier.padding(6.dp)) {
+                                key(tab, model.selected, model.nativeSelection?.optString("id")) {
+                                    RichMessageInput(value = draft, onValueChange = { changeDraft(it) }, onFile = { model.upload(it) }, modifier = Modifier.fillMaxWidth())
+                                }
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(onClick = { showAttachmentSource = true }, enabled = !s.loading && s.attached.size < 5) { Icon(Icons.Default.Add, "Dosya ekle") }
+                                    ModelControls(model, s.snapshot, Modifier.weight(1f))
+                                    IconButton(onClick = { if (dictationState.active) voiceModel.stop() else dictatePermission.launch(android.Manifest.permission.RECORD_AUDIO) }) {
+                                        Icon(if (dictationState.active) Icons.Default.Stop else Icons.Default.Mic, if (dictationState.active) "Dikteyi bitir" else "Dikte")
                                     }
-                                },
-                                enabled = draft.isNotBlank() && !s.loading,
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.Send,
-                                    "Mesaj gönder",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                )
+                                    FilledIconButton(onClick = {
+                                        if (model.nativeSelection != null) showExternal = true
+                                        else { model.send(draft); changeDraft("") }
+                                    }, enabled = draft.isNotBlank() && !s.loading) {
+                                        Icon(Icons.AutoMirrored.Filled.Send, "Mesaj gönder")
+                                    }
+                                }
                             }
                         }
                     }
@@ -512,33 +539,16 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             Text("Bu iş yanıtını bekliyor")
                         }
                     if (workflow.isNotEmpty()) {
-                        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                            Text("${directWorkflow.size} doğrudan · ${workflow.size} toplam · ${workflow.count { isActiveJob(it.task) }} aktif (toplam)", style = MaterialTheme.typography.labelSmall)
-                            FilterChip(
-                                selected = showDescendants,
-                                onClick = {
-                                    showDescendants = !showDescendants
-                                    model.repo.local.put(workflowKey, showDescendants.toString())
-                                },
-                                label = { Text("Alt işleri de göster") },
-                            )
-                            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 260.dp)) {
-                                items(workflowRows.filter { isActiveJob(it.task) }, key = { it.task.getString("id") }) { entry ->
-                                    WorkflowCard(entry, onOpen = { openTask(entry.task) })
-                                }
-                                val awaiting = workflowRows.filter { resultNeedsAttention(it.task) }
-                                if (awaiting.isNotEmpty()) item { Text("Yanıtı beklenen sonuçlar", style = MaterialTheme.typography.titleSmall) }
-                                items(awaiting, key = { "result:" + it.task.getString("id") }) { entry -> WorkflowCard(entry, onOpen = { openTask(entry.task) }) }
-                                val completed = workflowRows.filter { !isActiveJob(it.task) && !resultNeedsAttention(it.task) }.sortedByDescending { it.task.optLong("updatedAt") }
-                                if (completed.isNotEmpty()) item {
-                                    HorizontalDivider(Modifier.padding(top = 12.dp))
-                                    TextButton(onClick = { showCompletedWork = !showCompletedWork }) {
-                                        Text("${if (showCompletedWork) "▾" else "▸"} Sonlanan işler (${completed.size})")
-                                    }
-                                }
-                                if (showCompletedWork) items(completed, key = { it.task.getString("id") }) { entry ->
-                                    WorkflowCard(entry, onOpen = { openTask(entry.task) })
-                                }
+                        Surface(onClick = { showWorkflow = true }, color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+                            Row(Modifier.padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.AccountTree, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(Modifier.width(10.dp))
+                                Text("Bu sohbetin işleri", style = MaterialTheme.typography.labelLarge)
+                                Spacer(Modifier.weight(1f))
+                                val running = workflow.count { isActiveJob(it.task) }
+                                val awaiting = workflow.count { resultNeedsAttention(it.task) }
+                                Text(if (awaiting > 0) "$running aktif · $awaiting sonuç bekliyor" else "$running aktif · ${workflow.size} iş", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(Icons.Default.ChevronRight, "İş ayrıntılarını aç", Modifier.size(18.dp))
                             }
                         }
                     }
@@ -550,8 +560,8 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             Text("Daha fazla geçmiş yükle")
                         }
                     }
-                    val visibleLines = s.lines.sortedBy { it.order }
-                    val workBefore = s.workGroups.values.groupBy { group -> visibleLines.firstOrNull { it.order > group.order }?.id }
+                    val visibleLines = remember(s.lines) { s.lines.sortedBy { it.order } }
+                    val workBefore = remember(s.workGroups, visibleLines) { s.workGroups.values.groupBy { group -> visibleLines.firstOrNull { it.order > group.order }?.id } }
                     val list = rememberLazyListState()
                     var initiallyPositioned by remember(model.selected) { mutableStateOf(false) }
                     LaunchedEffect(model.selected, visibleLines.size, visibleLines.lastOrNull()?.text) {
@@ -660,9 +670,13 @@ fun WorkspaceApp(model: WorkspaceModel) {
                         }
                         workBefore[null]?.forEach { group -> item(key = group.id) { WorkActivityGroup(group) } }
                         items((s.snapshot.optJSONArray("queuedMessages")?.objects() ?: emptyList()).filter { it.optString("taskId") == selectedId && !it.optString("text").startsWith("Background task event") }, key = { "queued:" + it.optString("id") }) { queued ->
-                            Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                                Text("Sırada · " + queued.optString("text").lineSequence().first().take(160), maxLines = 2)
-                                if (current?.optString("provider") == "codex") TextButton(onClick = { model.steerQueued(selectedId, queued.optString("id")) }) { Text("Şimdi yönlendir") }
+                            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("Sıradaki mesaj", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(queued.optString("text"), style = MaterialTheme.typography.bodyMedium)
+                                    Text("Mevcut yanıtın ardından gönderilecek", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (current?.optString("provider") == "codex") TextButton(onClick = { model.steerQueued(selectedId, queued.optString("id")) }) { Text("Şimdi yönlendir") }
+                                }
                             }
                         }
 
@@ -1103,7 +1117,7 @@ fun WorkingTime(start: Long, end: Long) {
     }
     if (start > 0) {
         val seconds = ((if (end > 0) end else now) - start).coerceAtLeast(0) / 1000
-        Text("${if (end > 0) "Worked for" else "Working for"} ${seconds / 60}m ${seconds % 60}s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+        Text("${if (end > 0) "Tamamlandı" else "Çalışıyor"} · ${seconds / 60} dk ${seconds % 60} sn", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
     }
 }
 
@@ -1131,7 +1145,7 @@ private fun WorkflowCard(entry: JobTreeRow, onOpen: () -> Unit) {
             if (entry.depth > 0) Text(entry.path.joinToString(" → "), style = MaterialTheme.typography.labelSmall)
             Text(job.optString("title"), style = MaterialTheme.typography.titleSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
             Text(statusLabel(job.optString("status")) + " · Tur süresi " + workflowElapsed(job), style = MaterialTheme.typography.bodySmall)
-            if (resultNeedsAttention(job)) Text(resultDeliveryLabel(job) + " · Sonucu aç", style = MaterialTheme.typography.bodySmall)
+            if (resultNeedsAttention(job)) Text(resultDeliveryLabel(job), style = MaterialTheme.typography.bodySmall)
             if (job.optBoolean("quiet")) Text("10 dk boyunca etkinlik alınmadı · Kontrol gerekli", style = MaterialTheme.typography.bodySmall)
         }
     }
