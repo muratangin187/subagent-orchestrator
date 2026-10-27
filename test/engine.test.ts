@@ -117,7 +117,8 @@ test("wait timeout leaves child alive; terminal result is immutable after follow
       mode: "queue",
       clientRequestId: "next",
     });
-    await tick();
+    const deadline = Date.now() + 3000;
+    while (!s.drivers[1]?.context && Date.now() < deadline) await tick();
     assert.equal(s.drivers.length, 2);
     assert.equal(s.drivers[1]!.context!.task.sessionId, "native-session");
     s.drivers[1]!.resolve!("second result");
