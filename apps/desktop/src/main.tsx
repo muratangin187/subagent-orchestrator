@@ -170,6 +170,8 @@ function App({
     ),
     [selected, setSelected] = useState(selectedId),
     [query, setQuery] = useState(""),
+    [jobQuery, setJobQuery] = useState(""),
+    [activeJobsOnly, setActiveJobsOnly] = useState(false),
     [inspector, setInspector] = useState(true),
     [modal, setModal] = useState(""),
     [error, setError] = useState(""),
@@ -1251,6 +1253,7 @@ function App({
                 </button>
               </>
             )}
+            {!split && <button className="icon" title="Ayarlar" aria-label="Ayarlar" onClick={() => setModal("settings")}><Settings size={17} /></button>}
             {!split && (
               <button onClick={() => setModal("jobs")} aria-label="İşler">
                 <Layers size={16} /> İşler{" "}
@@ -1280,6 +1283,7 @@ function App({
                 className="icon"
                 title="Ayrıntı paneli"
                 aria-label="Ayrıntı paneli"
+                aria-expanded={inspector}
                 onClick={() => setInspector(!inspector)}
               >
                 <PanelRight size={18} />
@@ -2028,11 +2032,15 @@ function App({
                     <small>aktif iş</small>
                   </span>
                 </div>
+                <div className="list-controls">
+                  <input aria-label="İş ara" placeholder="İşlerde ara…" value={jobQuery} onChange={e => setJobQuery(e.target.value)} />
+                  <label><input type="checkbox" checked={activeJobsOnly} onChange={e => setActiveJobsOnly(e.target.checked)} />Yalnızca aktif işler</label>
+                </div>
                 <div className="task-tree">
                   {taskTree(
                     snap.tasks.filter((t) => !!t.parentTaskId),
                     snap.assistantId,
-                  ).map(({ task: t, depth, path, childCount }: any) => (
+                  ).filter(({task: t}: any) => (!activeJobsOnly || isActive(t)) && title(t).toLocaleLowerCase("tr-TR").includes(jobQuery.toLocaleLowerCase("tr-TR"))).map(({ task: t, depth, path, childCount }: any) => (
                     <div
                       className="job-choice"
                       key={t.id}
@@ -2075,8 +2083,8 @@ function App({
                       </button>
                     </div>
                   ))}
-                  {!snap.tasks.some((t) => !!t.parentTaskId) && (
-                    <p>Henüz iş yok.</p>
+                  {!snap.tasks.some((t) => !!t.parentTaskId && (!activeJobsOnly || isActive(t)) && title(t).toLocaleLowerCase("tr-TR").includes(jobQuery.toLocaleLowerCase("tr-TR"))) && (
+                    <p className="list-empty" role="status">{jobQuery ? "Aramana uygun iş bulunamadı." : activeJobsOnly ? "Şu anda aktif iş yok." : "Henüz iş yok. Asistana bir görev vererek başlayabilirsin."}</p>
                   )}
                 </div>
               </div>
@@ -2087,7 +2095,8 @@ function App({
                 <input
                   ref={search}
                   autoFocus
-                  placeholder="Workspace oturumlarında ara…"
+                  aria-label="Oturum ara"
+                  placeholder="Oturumlarda ara…"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
@@ -2104,14 +2113,13 @@ function App({
                     .map(row)}
                   {!filtered.some(
                     (t) => t.id !== snap.assistantId && !t.parentTaskId,
-                  ) && <p className="quiet">Henüz başka oturum yok.</p>}
+                  ) && <p className="list-empty" role="status">{query ? "Aramana uygun oturum bulunamadı." : "Henüz başka oturum yok."}</p>}
                 </div>
               </>
             )}
             {modal === "new" && (
               <>
-                <span className="eyebrow">YENİ BİR BAŞLANGIÇ</span>
-                <h2>Bir oturum aç.</h2>
+                <h2>Yeni oturum</h2>
                 <label>
                   Çalışacağı cihaz
                   <select
@@ -2175,7 +2183,7 @@ function App({
                       placeholder="Görevi ve beklediğin sonucu anlat…"
                     />
                   </label>
-                  <button className="primary" disabled={busy || !connected}>
+                  <button className="primary" disabled={busy || !connected || !newText.trim()}>
                     Oturumu başlat
                     <ArrowUp size={16} />
                   </button>

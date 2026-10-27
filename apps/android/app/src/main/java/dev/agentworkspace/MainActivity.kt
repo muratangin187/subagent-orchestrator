@@ -134,6 +134,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
     var settingsFromVoice by remember { mutableStateOf(false) }
     var navigationHistory by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
     var sessionQuery by rememberSaveable { mutableStateOf("") }
+    var jobQuery by rememberSaveable { mutableStateOf("") }
     var activeJobsOnly by rememberSaveable { mutableStateOf(false) }
     if (showVoice)
         VoiceScreen(
@@ -262,7 +263,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
         scope.launch { showJobs = false; showWorkflow = false }
     }
     if (showJobs) {
-        ModalBottomSheet(onDismissRequest = { showJobs = false }) {
+        ModalBottomSheet(onDismissRequest = { showJobs = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             Column(Modifier.fillMaxWidth().heightIn(max = 700.dp)) {
                 Row(
                     Modifier.fillMaxWidth().padding(24.dp),
@@ -280,6 +281,8 @@ fun WorkspaceApp(model: WorkspaceModel) {
                         Icon(Icons.Default.Close, "Kapat")
                     }
                 }
+                val matchingJobs = jobTree(jobs, s.snapshot.optString("assistantId"), activeJobsOnly).filter { it.task.optString("title").contains(jobQuery, true) }
+                OutlinedTextField(jobQuery, { jobQuery = it }, label = { Text("İş ara") }, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp), singleLine = true)
                 LazyColumn(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -291,15 +294,15 @@ fun WorkspaceApp(model: WorkspaceModel) {
                             label = { Text("Yalnızca aktif işler") },
                         )
                     }
-                    if (jobs.isEmpty())
+                    if (matchingJobs.isEmpty())
                         item {
                             Text(
-                                "Henüz arka plan işi yok. Asistanına bir görev ver.",
+                                if (jobQuery.isNotBlank()) "Aramana uygun iş bulunamadı." else if (activeJobsOnly) "Şu anda aktif iş yok." else "Henüz arka plan işi yok. Asistanına bir görev ver.",
                                 Modifier.padding(8.dp),
                             )
                         }
                     items(
-                        jobTree(jobs, s.snapshot.optString("assistantId"), activeJobsOnly),
+                        matchingJobs,
                         key = { it.task.getString("id") },
                     ) { row ->
                         val t = row.task
@@ -330,7 +333,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
         }
     }
     if (showWorkflow) {
-        ModalBottomSheet(onDismissRequest = { showWorkflow = false }) {
+        ModalBottomSheet(onDismissRequest = { showWorkflow = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Bu sohbetin işleri", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                 IconButton(onClick = { showWorkflow = false }) { Icon(Icons.Default.Close, "Kapat") }
@@ -706,16 +709,18 @@ fun WorkspaceApp(model: WorkspaceModel) {
             }
         }
     if (showSessions) {
-        ModalBottomSheet(onDismissRequest = { showSessions = false }) {
+        ModalBottomSheet(onDismissRequest = { showSessions = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             Column(Modifier.fillMaxWidth().padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Oturumlar", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
                     TextButton(onClick = { showSessions = false; showNew = true }) { Text("Yeni oturum") }
                 }
                 OutlinedTextField(sessionQuery, { sessionQuery = it }, label = { Text("Oturum ara") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                val matchingSessions = tasks.filter { it.optString("id") != s.snapshot.optString("assistantId") && it.optString("parentTaskId").let { p -> p.isBlank() || p == "null" } && it.optString("title").contains(sessionQuery, true) }.sortedByDescending { it.optLong("updatedAt") }
                 LazyColumn(Modifier.heightIn(max = 500.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     item { SessionCard("Asistan", "Kalıcı sohbet") { showSessions = false; tab = "assistant"; title = "Asistan"; model.open("assistant") } }
-                    items(tasks.filter { it.optString("id") != s.snapshot.optString("assistantId") && it.optString("parentTaskId").let { p -> p.isBlank() || p == "null" } && it.optString("title").contains(sessionQuery, true) }.sortedByDescending { it.optLong("updatedAt") }, key = { it.optString("id") }) { t ->
+                    if (matchingSessions.isEmpty()) item { Text(if (sessionQuery.isBlank()) "Henüz başka oturum yok." else "Aramana uygun oturum bulunamadı.", Modifier.padding(vertical = 20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    items(matchingSessions, key = { it.optString("id") }) { t ->
                         SessionCard(t.optString("title"), t.optString("deviceId") + " · " + t.optString("provider")) { showSessions = false; openTask(t) }
                     }
                 }
@@ -782,7 +787,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
             onDismissRequest = { showNew = false },
             title = { Text("Yeni oturum") },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Çalışacağı cihaz")
                     (s.snapshot.optJSONArray("devices")?.objects() ?: emptyList()).forEach { device ->
                         FilterChip(selected = deviceId == device.optString("id"), onClick = { deviceId = device.optString("id") }, label = { Text(device.optString("name")) })
@@ -870,7 +875,7 @@ fun WorkspaceApp(model: WorkspaceModel) {
             onDismissRequest = { questionTask = null },
             title = { Text("Yanıtın gerekiyor") },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text(task.optString("title"), fontWeight = FontWeight.SemiBold)
                     questions.forEach { question ->
                         val key =
@@ -1006,7 +1011,7 @@ fun PairScreen(model: WorkspaceModel, s: ScreenState) {
             )
         }
         Text(
-            "İlk sürüm · Yalnızca ön planda canlı güncelleme",
+            "Bağlantı bilgilerin bu cihazda güvenli olarak saklanır.",
             Modifier.padding(top = 24.dp),
             style = MaterialTheme.typography.labelSmall,
         )

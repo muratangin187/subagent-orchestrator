@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { ChevronDown, Search, Brain } from "lucide-react";
 import { request } from "./types";
 export type Selection = {
@@ -20,7 +20,28 @@ export function ModelPicker({
     [open, setOpen] = useState(false),
     [search, setSearch] = useState(""),
     [error, setError] = useState("");
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
   useEffect(() => {
+    if (!open) return;
+    const pointer = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation(); setOpen(false); trigger.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", pointer);
+    root.current?.addEventListener("keydown", key);
+    const element = root.current;
+    return () => { document.removeEventListener("pointerdown", pointer); element?.removeEventListener("keydown", key); };
+  }, [open]);
+  useEffect(() => {
+    setLoading(true);
+    setError("");
     let live = true;
     setModels([]);
     request(
@@ -34,18 +55,20 @@ export function ModelPicker({
       })
       .catch((e) => {
         if (live) setError(e.message);
-      });
+      }).finally(() => { if (live) setLoading(false); });
     return () => {
       live = false;
     };
-  }, [deviceId]);
+  }, [deviceId, reload]);
   const current = models.find(
     (m) => m.provider === value?.provider && m.model === value?.model,
   );
+  const matching = models.filter(m => (m.label + " " + m.provider).toLocaleLowerCase("tr-TR").includes(search.toLocaleLowerCase("tr-TR")));
   return (
-    <div className="model-controls">
+    <div className="model-controls" ref={root}>
       <div className="model-picker">
         <button
+          ref={trigger}
           type="button"
           onClick={() => setOpen(!open)}
           aria-expanded={open}
@@ -60,6 +83,7 @@ export function ModelPicker({
             <label>
               <Search size={15} />
               <input
+                aria-label="Model ara"
                 autoFocus
                 placeholder="Model ara…"
                 value={search}
@@ -71,7 +95,7 @@ export function ModelPicker({
               <Brain size={15} />
               <span>Düşünme seviyesi</span>
               <select
-                aria-label="Reasoning seviyesi"
+                aria-label="Düşünme seviyesi"
                 value={value?.effort || ""}
                 disabled={!current?.efforts.length}
                 onChange={(e) =>
@@ -87,12 +111,10 @@ export function ModelPicker({
                 ))}
               </select>
             </div>
-            {models
-              .filter((m) =>
-                (m.label + " " + m.provider)
-                  .toLowerCase()
-                  .includes(search.toLowerCase()),
-              )
+            {loading && <p role="status">Modeller yükleniyor…</p>}
+            {!loading && !matching.length && <p role="status">{search ? "Bu aramada model bulunamadı." : "Kullanılabilir model bulunamadı."}</p>}
+            {error && <button type="button" onClick={() => setReload(v => v + 1)}>Yeniden dene</button>}
+            {matching
               .map((m) => (
                 <button
                   type="button"
@@ -108,7 +130,7 @@ export function ModelPicker({
                   </span>
                 </button>
               ))}
-            <button type="button" onClick={() => setOpen(false)}>
+            <button type="button" onClick={() => { setOpen(false); trigger.current?.focus(); }}>
               Kapat
             </button>
           </div>

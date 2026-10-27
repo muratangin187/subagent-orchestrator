@@ -7,6 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -24,12 +25,18 @@ fun ModelControls(model: WorkspaceModel, snapshot: JSONObject, modifier: Modifie
     val selected = picked ?: task
     var open by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
-    LaunchedEffect(device) {
+    var loading by remember(device) { mutableStateOf(true) }
+    var retry by remember { mutableIntStateOf(0) }
+    LaunchedEffect(device, retry) {
+        loading = true
+        error = ""
         try {
             val result = withContext(Dispatchers.IO) { model.repo.request("/v1/models?catalog=true&deviceId=" + URLEncoder.encode(device, "UTF-8")) }
             models = result.optJSONArray("models")?.objects() ?: emptyList()
             error = result.optJSONObject("errors")?.let { e -> e.keys().asSequence().map { e.optString(it) }.joinToString(" ") } ?: ""
-        } catch (e: Exception) { error = e.message ?: "Model listesi alınamadı" }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { error = e.message ?: "Model listesi alınamadı" }
+        finally { loading = false }
     }
     val current = models.find { it.optString("provider") == selected?.optString("provider") && it.optString("model") == selected?.optString("model") }
     fun choose(value: JSONObject) { picked = value; model.selections[model.selected] = value }
@@ -39,7 +46,7 @@ fun ModelControls(model: WorkspaceModel, snapshot: JSONObject, modifier: Modifie
             Text(selected?.optString("effort")?.takeIf { it.isNotBlank() } ?: "Otomatik düşünme", style = MaterialTheme.typography.labelSmall)
         }
     }
-    if (open) ModalBottomSheet(onDismissRequest = { open = false }) {
+    if (open) ModalBottomSheet(onDismissRequest = { open = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Model ve düşünme", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
@@ -59,10 +66,14 @@ fun ModelControls(model: WorkspaceModel, snapshot: JSONObject, modifier: Modifie
                     }
                 }
             }
-            if (error.isNotBlank()) Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (error.isNotBlank()) {
+                Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = { retry++ }, enabled = !loading) { Text("Yeniden dene") }
+            }
             androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
                 val matching = models.filter { (it.optString("label") + it.optString("provider")).contains(search, true) }
-                if (matching.isEmpty()) item { Text(if (models.isEmpty()) "Model listesi henüz hazır değil" else "Bu aramada model bulunamadı", Modifier.padding(vertical = 20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                if (matching.isEmpty() && !loading) item { Text(if (models.isEmpty()) "Kullanılabilir model bulunamadı" else "Bu aramada model bulunamadı", Modifier.padding(vertical = 20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 items(matching.size) { index ->
                     val row = matching[index]
                     val isSelected = row.optString("provider") == selected?.optString("provider") && row.optString("model") == selected?.optString("model")
