@@ -16,6 +16,8 @@ export function InlineVisual({
     [expanded, setExpanded] = useState(false);
   const [width, setWidth] = useState(375);
   const box = useRef<HTMLDivElement>(null);
+  const expandButton = useRef<HTMLButtonElement>(null);
+  const expandedDialog = useRef<HTMLDivElement>(null);
   const sendTheme = (target: HTMLIFrameElement) => {
     const style = getComputedStyle(document.documentElement);
     target.contentWindow?.postMessage(
@@ -51,7 +53,9 @@ export function InlineVisual({
   }, []);
   useEffect(() => {
     let live = true;
+    setHtml("");
     setError("");
+    setExpanded(false);
     request("/v1/visuals/" + visual.id)
       .then((r) => {
         if (live) setHtml(r.html);
@@ -73,11 +77,22 @@ export function InlineVisual({
   }, []);
   useEffect(() => {
     if (!expanded) return;
+    const dialog = expandedDialog.current;
+    const closeButton = dialog?.querySelector<HTMLButtonElement>("button");
+    closeButton?.focus();
+    const keepFocus = (event: FocusEvent) => {
+      if (!dialog?.contains(event.target as Node)) closeButton?.focus();
+    };
     const close = (e: KeyboardEvent) => {
       if (e.key === "Escape") setExpanded(false);
     };
     window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
+    document.addEventListener("focusin", keepFocus);
+    return () => {
+      window.removeEventListener("keydown", close);
+      document.removeEventListener("focusin", keepFocus);
+      expandButton.current?.focus();
+    };
   }, [expanded]);
   const height = Math.min(
     1600,
@@ -108,6 +123,7 @@ export function InlineVisual({
       <div className="visual-toolbar">
         <strong>{visual.title}</strong>
         <button
+          ref={expandButton}
           aria-label="Görseli büyüt"
           disabled={!html}
           onClick={() => setExpanded(true)}
@@ -129,6 +145,7 @@ export function InlineVisual({
       {expanded && (
         <div className="overlay">
           <div
+            ref={expandedDialog}
             className="visual-expanded"
             role="dialog"
             aria-modal="true"
@@ -137,7 +154,6 @@ export function InlineVisual({
             <div className="visual-toolbar">
               <strong>{visual.title}</strong>
               <button
-                autoFocus
                 aria-label="Kapat"
                 onClick={() => setExpanded(false)}
               >

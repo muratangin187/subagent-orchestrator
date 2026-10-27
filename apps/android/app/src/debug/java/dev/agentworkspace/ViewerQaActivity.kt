@@ -49,15 +49,35 @@ class ViewerQaActivity : ComponentActivity() {
         setContent {
             WorkspaceTheme {
                 var selected by remember { mutableStateOf<File?>(null) }
+                var visual by remember { mutableStateOf(false) }
                 Surface(Modifier.fillMaxSize()) {
                     Column(Modifier.safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Dosya görüntüleyici QA", style = MaterialTheme.typography.headlineSmall)
                         Text("Yalnızca yerel örnekler. Kişisel bağlantı kullanılmaz.")
+                        val appearance = LocalAppearance.current
+                        Row {
+                            TextButton(onClick = { appearance.chooseMode("light") }) { Text("Açık tema") }
+                            TextButton(onClick = { appearance.chooseMode("dark") }) { Text("Koyu tema") }
+                        }
+                        OutlinedButton(onClick = { visual = true }) { Text("Etkileşimli görsel") }
                         fixtures.forEach { file -> OutlinedButton(onClick = { selected = file }, modifier = Modifier.fillMaxWidth()) { Text(file.name) } }
                         WorkActivityGroup(WorkActivityRun("qa", state = "completed", end = 1, items = listOf(WorkActivityItem("tool", title = "Dosya kontrolü", state = "completed", output = "Yerel örnek tamamlandı."))))
                     }
                 }
                 selected?.let { file -> AttachmentViewer(AttachmentPreview(file.name, file), onClose = { selected = null }) }
+                if (visual) androidx.compose.ui.window.Dialog(onDismissRequest = { visual = false }) {
+                    Surface {
+                        Column(Modifier.padding(16.dp)) {
+                            val appearance = LocalAppearance.current
+                            Row {
+                                TextButton(onClick = { appearance.chooseMode("light") }) { Text("Açık tema") }
+                                TextButton(onClick = { appearance.chooseMode("dark") }) { Text("Koyu tema") }
+                            }
+                            VisualWebView("""<!doctype html><html><meta name="viewport" content="width=device-width"><style>body{background:var(--background);color:var(--foreground);font:18px system-ui;padding:12px}button{padding:12px}</style><h2>Görsel QA</h2><p id="scheme">Tema bekleniyor</p><button onclick="this.textContent='Seçili'">Seç</button><script>addEventListener('message',e=>{if(e.data.type==='workspace-theme')document.getElementById('scheme').textContent=e.data.scheme;});</script></html>""", Modifier.fillMaxWidth().height(300.dp))
+                            TextButton(onClick = { visual = false }) { Text("Kapat") }
+                        }
+                    }
+                }
             }
         }
     }

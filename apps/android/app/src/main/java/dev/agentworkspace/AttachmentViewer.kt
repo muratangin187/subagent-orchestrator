@@ -144,7 +144,8 @@ fun AttachmentViewer(preview: AttachmentPreview, onClose: () -> Unit) {
                             )
                             if (error)
                                 Text(
-                                    "Görsel açılamadı. Başka bir uygulamada açmayı deneyebilirsin."
+                                    "Görsel açılamadı. Başka bir uygulamada açmayı deneyebilirsin.",
+                                    Modifier.padding(24.dp),
                                 )
                         }
                     else -> TextPreview(preview.file)
@@ -178,14 +179,16 @@ private fun ZoomSurface(content: @Composable () -> Unit) {
         ) {
             content()
         }
-        TextButton(
-            onClick = {
-                scale = 1f
-                offset = Offset.Zero
-            },
-            modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-        ) {
-            Text("Sığdır")
+        Surface(modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp), shape = MaterialTheme.shapes.small) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { scale = (scale - .5f).coerceAtLeast(1f); if (scale == 1f) offset = Offset.Zero }, enabled = scale > 1f) {
+                    Icon(Icons.Default.ZoomOut, "Uzaklaştır")
+                }
+                TextButton(onClick = { scale = 1f; offset = Offset.Zero }) { Text("Sığdır") }
+                IconButton(onClick = { scale = (scale + .5f).coerceAtMost(5f) }, enabled = scale < 5f) {
+                    Icon(Icons.Default.ZoomIn, "Yakınlaştır")
+                }
+            }
         }
     }
 }
@@ -394,17 +397,25 @@ private fun HtmlPreview(file: File) {
 private fun MarkdownPreview(file: File) {
     var source by remember(file) { mutableStateOf(false) }
     var text by remember(file) { mutableStateOf<String?>(null) }
+    var error by remember(file) { mutableStateOf(false) }
     LaunchedEffect(file) {
-        text = withContext(Dispatchers.IO) { file.bufferedReader().use { reader ->
+        try {
+            text = withContext(Dispatchers.IO) { file.bufferedReader().use { reader ->
             val buffer = CharArray(100001)
             var size = 0
             while (size < buffer.size) { val n = reader.read(buffer, size, buffer.size - size); if (n < 0) break; size += n }
             String(buffer, 0, minOf(size, 100000)) + if (size > 100000) "\n[Önizleme kısaltıldı]" else ""
-        } }
+            } }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            error = true
+        }
     }
     Column(Modifier.fillMaxSize()) {
         TextButton(onClick = { source = !source }) { Text(if (source) "Önizleme" else "Ham metin") }
-        if (source) TextPreview(file)
+        if (error) Text("Dosya okunamadı. İndirip başka bir uygulamada açmayı deneyebilirsin.", Modifier.padding(16.dp))
+        else if (source) TextPreview(file)
         else Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp)) {
             MarkdownMessage(text ?: "Yükleniyor…")
         }

@@ -91,6 +91,7 @@ export function UsageLimits({
                 {window ? `${Math.round(100 - window.usedPercent)}%` : "—"}
               </strong>
               <progress
+                aria-hidden={!window}
                 aria-label={`${provider} kalan kota`}
                 max={100}
                 value={window ? 100 - window.usedPercent : 0}

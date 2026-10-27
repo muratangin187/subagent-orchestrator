@@ -28,6 +28,7 @@ fun InlineVisual(model: WorkspaceModel, visual: JSONObject) {
     LaunchedEffect(id, attempt) {
         error = false
         try { html = withContext(Dispatchers.IO) { model.repo.request("/v1/visuals/$id").getString("html") } }
+        catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (_: Exception) { error = true }
     }
     val screenWidth = LocalConfiguration.current.screenWidthDp
@@ -53,11 +54,19 @@ fun InlineVisual(model: WorkspaceModel, visual: JSONObject) {
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun VisualWebView(html: String, modifier: Modifier) {
+internal fun VisualWebView(html: String, modifier: Modifier) {
     val colors = MaterialTheme.colorScheme
     fun hex(color: androidx.compose.ui.graphics.Color) = String.format("#%06X", 0xFFFFFF and color.toArgb())
     val theme = JSONObject().put("type","workspace-theme").put("scheme",if(colors.surface.luminance()<0.5) "dark" else "light").put("colors",JSONObject().put("background",hex(colors.surface)).put("foreground",hex(colors.onSurface)).put("muted",hex(colors.onSurfaceVariant)).put("accent",hex(colors.primary)).put("border",hex(colors.outline)))
+    val themeScript by rememberUpdatedState("""
+        (() => { const theme = $theme;
+          document.documentElement.style.colorScheme = theme.scheme;
+          Object.entries(theme.colors).forEach(([key,value]) => document.documentElement.style.setProperty('--' + key, value));
+          window.postMessage(theme, '*');
+        })();
+    """.trimIndent())
     // No native bridge, file access or network. Authenticated loading is native-only.
+    key(html) {
     AndroidView(modifier = modifier, factory = { context ->
         WebView(context).apply {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
@@ -76,6 +85,7 @@ private fun VisualWebView(html: String, modifier: Modifier) {
             val themed = html.replace("<html>", "<html style=\"color-scheme:${theme.getString("scheme")};--background:${hex(colors.surface)};--foreground:${hex(colors.onSurface)};--muted:${hex(colors.onSurfaceVariant)};--accent:${hex(colors.primary)};--border:${hex(colors.outline)}\">")
             val address = "https://visual.invalid/document"
             webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView, url: String) { view.evaluateJavascript(themeScript, null) }
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean = true
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse {
                     if(request.url.toString() == address && request.isForMainFrame) {
@@ -87,5 +97,6 @@ private fun VisualWebView(html: String, modifier: Modifier) {
             CookieManager.getInstance().setAcceptThirdPartyCookies(this,false)
             loadUrl(address)
         }
-    }, onRelease = { it.stopLoading(); it.destroy() })
+    }, update = { it.evaluateJavascript(themeScript, null) }, onRelease = { it.stopLoading(); it.destroy() })
+    }
 }

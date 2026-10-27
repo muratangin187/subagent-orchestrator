@@ -135,13 +135,23 @@ function PdfPreview({ file }: { file: Attachment }) {
 
 export function AttachmentPreview({ file }: { file: Attachment }) {
   const [source, setSource] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [copyStatus, setCopyStatus] = useState("");
+  useEffect(() => {
+    setSource(false);
+    setImageError(false);
+    setCopyStatus("");
+  }, [file.id]);
   if (/\.pdf$/i.test(file.name))
     return <PdfPreview key={file.id} file={file} />;
   if (/\.(png|jpe?g|webp|gif)$/i.test(file.name))
-    return (
+    return imageError ? (
+      <p role="alert">Görsel açılamadı. Dosyayı indirip başka bir uygulamada açmayı deneyebilirsin.</p>
+    ) : (
       <img
         className="image-preview"
         alt={file.name}
+        onError={() => setImageError(true)}
         src={
           "data:image/" +
           (/\.jpe?g$/i.test(file.name) ? "jpeg" : file.name.split(".").pop()) +
@@ -158,9 +168,14 @@ export function AttachmentPreview({ file }: { file: Attachment }) {
           <button onClick={() => setSource((v) => !v)}>
             {source ? "Önizleme" : "Ham metin"}
           </button>
-          <button onClick={() => void window.desktop.copyText(text)}>
+          <button onClick={() => {
+            void window.desktop.copyText(text)
+              .then(() => setCopyStatus("Kopyalandı"))
+              .catch(() => setCopyStatus("Kopyalanamadı. Yeniden dene."));
+          }}>
             Kopyala
           </button>
+          <span role="status">{copyStatus}</span>
         </div>
         {source ? (
           <pre className="file-preview">{text.slice(0, 100000)}</pre>
