@@ -5,6 +5,7 @@ import { WorkspaceLayout, type PaneProps } from "./WorkspaceLayout";
 import { VoiceDock } from "./VoiceDock";
 import { InlineVisual } from "./InlineVisual";
 import { UsageLimits } from "./UsageLimits";
+import { workflowTree, loadWorkflowPreference, workflowPreferenceKey } from "./workflow-tree.mjs";
 import { taskTree } from "./task-tree.mjs";
 import { ModelPicker, type Selection } from "./ModelPicker";
 import {
@@ -226,6 +227,14 @@ function App({
   const children = ordered(
     snap.tasks.filter((t) => t.parentTaskId === task?.id),
   );
+  const workflowKey = workflowPreferenceKey(origin, selected === "assistant" ? snap.assistantId : selected);
+  const [workflowPreference, setWorkflowPreference] = useState({ key: "", enabled: false });
+  const showDescendants = workflowPreference.key === workflowKey
+    ? workflowPreference.enabled : loadWorkflowPreference(localStorage, workflowKey);
+  const workflow: { task: Task; depth: number; path: string[] }[] = external ? [] : workflowTree(snap.tasks,
+    selected === "assistant" ? snap.assistantId : selected, selected === "assistant");
+  const workflowDirect = workflow.filter((entry) => entry.depth === 0);
+  const workflowRows = showDescendants ? workflow : workflowDirect;
   const draft = drafts[selected] || "";
   const progress = chatStatus({
     task,
@@ -1756,13 +1765,26 @@ function App({
                     <Activity size={16} />
                     Çalışma akışı
                   </h3>
-                  <span className="count">{active.length}</span>
+                  <span className="count" title="Doğrudan bağlı işler">{workflowDirect.length}</span>
                 </div>
                 <p className="quiet">
-                  Sohbet devam ederken işlerin burada ilerler.
+                  {workflowDirect.length} doğrudan · {workflow.length} toplam · {workflow.filter(({ task: t }) => isActive(t)).length} aktif (toplam)
                 </p>
-                {(selected === "assistant" ? active : children).map(row)}
-                {!(selected === "assistant" ? active : children).length && (
+                <label className="quiet">
+                  <input type="checkbox" checked={showDescendants} onChange={(e) => {
+                    const enabled = e.target.checked;
+                    setWorkflowPreference({ key: workflowKey, enabled });
+                    try { localStorage.setItem(workflowKey, String(enabled)); } catch { /* Current view remains usable. */ }
+                  }} /> Alt işleri de göster
+                </label>
+                {workflowRows.map(({ task: t, depth, path }) => (
+                  <div key={t.id} style={{ marginLeft: Math.min(depth, 6) * 16 }}>
+                    {depth > 0 && <small className="quiet" title={path.join(" → ")}>{path.join(" → ")}</small>}
+                    {row(t)}
+                    <small className="quiet">{labels[t.status] || t.status}</small>
+                  </div>
+                ))}
+                {!workflowRows.length && (
                   <div className="inspector-empty">
                     <CheckCircle2 size={25} />
                     <h4>Aktif iş yok.</h4>

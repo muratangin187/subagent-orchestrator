@@ -202,6 +202,11 @@ fun WorkspaceApp(model: WorkspaceModel) {
     val selectedId =
         if (model.selected == "assistant") s.snapshot.optString("assistantId") else model.selected
     val current = tasks.find { it.optString("id") == selectedId }
+    val workflowKey = workflowPreferenceKey(model.repo.vault.url, selectedId)
+    var showDescendants by remember(workflowKey) { mutableStateOf(model.repo.local.get(workflowKey) == "true") }
+    val workflow = if (model.nativeSelection != null) emptyList() else workflowTree(tasks, selectedId, model.selected == "assistant")
+    val directWorkflow = workflow.filter { it.depth == 0 }
+    val workflowRows = if (showDescendants) workflow else directWorkflow
     fun rememberPage() {
         val page =
             JSONObject()
@@ -505,30 +510,29 @@ fun WorkspaceApp(model: WorkspaceModel) {
                         ) {
                             Text("Bu iş yanıtını bekliyor")
                         }
-                    if (activeJobs.isNotEmpty()) {
-                        androidx.compose.foundation.lazy.LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            items(activeJobs, key = { it.getString("id") }) { job ->
-                                AssistChip(
-                                    onClick = { openTask(job) },
-                                    label = {
-                                        Text(
-                                            job.optString("title"),
-                                            Modifier.widthIn(max = 180.dp),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
+                    if (workflow.isNotEmpty()) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                            Text("${directWorkflow.size} doğrudan · ${workflow.size} toplam · ${workflow.count { isActiveJob(it.task) }} aktif (toplam)", style = MaterialTheme.typography.labelSmall)
+                            FilterChip(
+                                selected = showDescendants,
+                                onClick = {
+                                    showDescendants = !showDescendants
+                                    model.repo.local.put(workflowKey, showDescendants.toString())
+                                },
+                                label = { Text("Alt işleri de göster") },
+                            )
+                            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 180.dp)) {
+                                items(workflowRows, key = { it.task.getString("id") }) { entry ->
+                                    val job = entry.task
+                                    Column(Modifier.padding(start = (entry.depth.coerceAtMost(6) * 12).dp)) {
+                                        if (entry.depth > 0) Text(entry.path.joinToString(" → "), style = MaterialTheme.typography.labelSmall)
+                                        AssistChip(
+                                            onClick = { openTask(job) },
+                                            label = { Text(job.optString("title") + " · " + statusLabel(job.optString("status")), maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                                            leadingIcon = { JobIndicator(job.optString("status")) },
                                         )
-                                    },
-                                    leadingIcon = { JobIndicator(job.optString("status")) },
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors =
-                                        AssistChipDefaults.assistChipColors(
-                                            containerColor =
-                                                MaterialTheme.colorScheme.surfaceContainer
-                                        ),
-                                )
+                                    }
+                                }
                             }
                         }
                     }
