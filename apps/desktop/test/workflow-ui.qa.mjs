@@ -10,11 +10,17 @@ try {
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{
  const t=(id,parentTaskId)=>({id,parentTaskId,title:'QA '+id,status:'running',provider:'codex',deviceId:'qa',createdAt:Date.now()-120000,updatedAt:Date.now()-1000});
- const snapshot={assistantId:'A',tasks:[t('A'),t('one','A'),t('two','A'),t('three','A'),t('nested','two'),{...t('done','A'),status:'completed'},{...t('unreported','A'),status:'completed',resultDelivery:{state:'response_failed'}},t('foreign','B')],devices:[],localDeviceId:'qa',defaultDeviceId:'qa'};
+ const snapshot={assistantId:'A',queuedMessages:[{id:'queued-1',taskId:'A',text:'Önce rapordaki eksik kaynakları tamamla.\nArdından değişiklikleri kısa bir özetle paylaş.'}],tasks:[t('A'),t('one','A'),t('two','A'),t('three','A'),t('nested','two'),{...t('done','A'),status:'completed'},{...t('unreported','A'),status:'completed',resultDelivery:{state:'response_failed'}},t('foreign','B')],devices:[],localDeviceId:'qa',defaultDeviceId:'qa'};
  window.desktop={connection:async()=>({connected:true,origin:'qa-fixture'}),onCommand:()=>()=>{},notify:async()=>{},request:async(path,body)=>{if(body)throw Error('QA fixture prohibits mutations');if(path==='/v1/state')return snapshot;if(path.startsWith('/v1/messages'))return {messages:[],nextOffset:0};return {};}};
  });
  await page.goto('http://127.0.0.1:'+server.address().port);
  const inspector=page.locator('aside.inspector');
+ await page.getByText('Sıradaki mesaj',{exact:true}).waitFor();
+ assert.equal(await inspector.getByRole('button',{name:'Sonucu aç',exact:true}).count(),0);
+ await page.screenshot({path:'/tmp/aw-queue-redesign-wide.png'});
+ await page.setViewportSize({width:850,height:850});
+ await page.screenshot({path:'/tmp/aw-queue-redesign-narrow.png'});
+ await page.setViewportSize({width:1440,height:1000});
  await inspector.getByText('5 doğrudan · 6 toplam · 4 aktif (toplam)').waitFor();
  assert.equal(await inspector.locator('.session-choice:visible').count(),4);
  await inspector.getByRole('region',{name:'Yanıtı beklenen sonuçlar'}).getByText('Asistanın nihai yanıtı oluşmadı').waitFor();

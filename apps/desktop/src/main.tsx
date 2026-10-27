@@ -24,6 +24,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   Copy,
+  Clock3,
   Loader2,
   Sparkles,
   MessageSquare,
@@ -1479,9 +1480,13 @@ function App({
                   )
                   .map((q) => (
                     <aside key={q.id} className="queued-message" role="status">
-                      <span>
-                        Sırada · {q.text.split("\n")[0].slice(0, 160)}
-                      </span>
+                      <div className="queued-message-heading">
+                        <Clock3 size={14} aria-hidden="true" />
+                        <span>Sıradaki mesaj</span>
+                      </div>
+                      <p className="queued-message-text">{q.text}</p>
+                      <div className="queued-message-footer">
+                        <span>Mevcut yanıtın ardından gönderilecek</span>
                       {task?.provider === "codex" && (
                         <button
                           disabled={busy}
@@ -1498,6 +1503,7 @@ function App({
                           Şimdi yönlendir
                         </button>
                       )}
+                      </div>
                     </aside>
                   ))}
               </div>
@@ -1788,7 +1794,7 @@ function App({
                 {workflowRows.some(({task:t})=>resultNeedsAttention(t)) && <section aria-label="Yanıtı beklenen sonuçlar">
                   <h4>Yanıtı beklenen sonuçlar</h4>
                   {workflowRows.filter(({task:t})=>resultNeedsAttention(t)).map(({task:t})=><div className="workflow-card" key={t.id}>
-                    {row(t)}<p>{resultDeliveryLabel(t)}</p><button onClick={()=>openTask(t.id)}>Sonucu aç</button>
+                    {row(t)}<p>{resultDeliveryLabel(t)}</p>
                   </div>)}
                 </section>}
                 {workflowRows.some(({ task: t }) => !isActive(t) && !resultNeedsAttention(t)) && <details className="workflow-completed">
