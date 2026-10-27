@@ -1,0 +1,18 @@
+executionPrerequisite: Agent Workspace installed and paired, single assistant view, no voice panel; QA · Mesaj bildirimi session exists. Chromium desktop.
+steps:
+  - await:
+      visible: { text: Oturumlar, role: button }
+  - echo: Open sessions and select the dedicated QA session beside the assistant.
+  - tap: { text: Oturumlar }
+  - await:
+      visible: { text: 'QA · Mesaj bildirimi — sağda aç', role: button }
+  - await: { idle: true }
+  - tap: { text: 'QA · Mesaj bildirimi — sağda aç' }
+  - await:
+      visible: { text: Sohbet genişliklerini ayarla, role: separator }
+  - await: { idle: true }
+  - echo: Close the secondary chat; assistant remains and the divider disappears.
+  - tap: { text: Sağ sohbeti kapat }
+  - await:
+      hidden: { text: Sohbet genişliklerini ayarla, role: separator }
+  - await: { idle: true }

@@ -1,0 +1,22 @@
+executionPrerequisite: Agent Workspace paired and open on assistant, voice panel closed and speaker unmuted. No microphone recording will be started.
+steps:
+  - await:
+      visible: { text: Sesli asistan, role: button }
+  - await:
+      visible: { text: Oturumlar, role: button }
+  - echo: Open the voice dock without starting the microphone; conversation remains available.
+  - tap: { text: Sesli asistan, role: button }
+  - await:
+      visible: { text: Sesli asistan paneli, role: aside }
+  - await: { idle: true }
+  - echo: Mute response playback and verify the button changes.
+  - tap: { text: Yanıt sesini kapat }
+  - await:
+      visible: { text: Yanıt sesini aç, role: button }
+  - tap: { text: Yanıt sesini aç }
+  - await:
+      visible: { text: Yanıt sesini kapat, role: button }
+  - tap: { text: Sesli asistanı kapat }
+  - await:
+      hidden: { text: Sesli asistan paneli, role: aside }
+  - await: { idle: true }

@@ -8,7 +8,7 @@ A spacious desktop companion for your existing Agent Workspace server. One persi
 - Markdown conversations, file attachments, image/text previews, paginated PDF viewing, sandboxed HTML rendering, and native downloads/opening.
 - Expandable per-turn work logs: tool input/output, provider-published thinking, elapsed time, and raw Markdown copy.
 - Voice capture and speech playback through the server's ElevenLabs configuration.
-- macOS menus, keyboard shortcuts, encrypted connection storage, and generic task notifications.
+- macOS menus, keyboard shortcuts, encrypted connection storage, and task notifications with private message previews.
 
 ## Run locally
 
@@ -40,7 +40,7 @@ The current packaging configuration produces an ad-hoc signed local build with t
 | ⌘ 1 / 2 / 3 | Assistant / jobs / sessions |
 | ⌘ , | Settings |
 | Enter / Shift Enter | Send / new line |
-| Escape | Close overlay and stop voice capture |
+| Escape | Close overlay or cancel composer dictation |
 
 ## Security and behavior
 
@@ -71,3 +71,35 @@ On 26 October 2026, the user confirmed live microphone operation in the installe
 Mouse back/forward buttons, Alt+Left/Right and Cmd+[/] navigate the in-app history. Chat and list scroll positions are restored separately during the current app session; up to 20 loaded transcripts are retained for immediate return. Copy preserves raw Markdown, and the adjacent speech action is labelled “Seslendir”.
 
 Appearance is available under **Ayarlar → Görünüm**: system/light/dark and teal/blue/copper/rose accent colors, saved locally. System mode follows live OS changes. The interface uses bundled, OFL-licensed IBM Plex Sans and semantic color tokens; see [DESIGN.md](../../DESIGN.md). Documents keep their own colors. Ad-hoc macOS upgrades may prompt for Keychain permission again when opening the encrypted connection.
+
+## Wide-screen workspace
+
+In **Jobs** or **Sessions**, Shift-click a row or use its two-column icon to open
+it beside the assistant. Each pane has an independent composer, draft, attachments,
+model selection and transcript scroll position. The right rail is replaced by a
+compact header per pane (device, provider, last activity and status). Active jobs
+appear as truncated chips; the mouse wheel scrolls an overflowing chip row horizontally.
+Settings and remaining quota are available through the header settings button.
+
+Drag the divider to resize the conversations. Double-click it (or press Home while
+it is focused) for equal widths; arrow keys adjust it incrementally. Each pane
+keeps at least 340 px where the window has room. The ratio is saved locally.
+Closing the right pane does not cancel its work, and reopening it in the same
+app session preserves its draft. Mouse back/forward restores the workspace layout.
+
+**Voice assistant** opens a fixed left panel without replacing either chat. Its
+animated sphere reflects listening/speaking state. Start recording explicitly;
+the send arrow submits the recording, the microphone-off button discards it, and
+the speaker button mutes response playback. Closing the panel releases the microphone.
+Voice messages continue to target the persistent assistant; dictation in a chat
+composer only fills that pane's draft. Only one pane can capture the microphone
+at a time. Reduced-motion settings disable the sphere animation.
+
+Verification: `npm test` includes split navigation and minimum-width regressions.
+The recorded `.argent/e2e/desktop-split-voice-20261027.yaml` checks opening/closing
+split chat against the dedicated QA session described in its prerequisite.
+
+The voice-dock recording checks opening, muting/unmuting, and closing without
+starting a microphone recording. Its idle gate reports the intentional sphere
+animation; the next action targets the stable speaker button. A new spoken
+conversation was not recorded during this layout verification.

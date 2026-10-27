@@ -1,3 +1,6 @@
+import { createPortal } from "react-dom";
+import { WorkspaceLayout, type PaneProps } from "./WorkspaceLayout";
+import { VoiceDock } from "./VoiceDock";
 import { InlineVisual } from "./InlineVisual";
 import { UsageLimits } from "./UsageLimits";
 import { taskTree } from "./task-tree.mjs";
@@ -31,6 +34,7 @@ import {
   X,
   ChevronRight,
   PanelRight,
+  Columns2,
   Square,
   FileText,
   Download,
@@ -85,6 +89,7 @@ function CopyMessage({ text }: { text: string }) {
   );
 }
 const empty: Snapshot = { tasks: [], inputs: [] };
+let activeCapturePane: string | null = null;
 const uid = () => crypto.randomUUID();
 const time = (n: number) =>
   new Date(n).toLocaleTimeString("tr", { hour: "2-digit", minute: "2-digit" });
@@ -101,13 +106,31 @@ function Badge({ task }: { task: Task }) {
 type Route = { view: string; selected: string; external?: Native | null };
 const routeKey = (r: Route) =>
   r.view === "chat" || r.view === "assistant" ? "chat:" + r.selected : r.view;
-function App() {
+function App({
+  paneId,
+  selectedId,
+  split,
+  activePane,
+  onFocusPane,
+  onSelect,
+  onSplit,
+  onClose,
+  voiceOpen,
+  onVoice,
+  voiceTarget,
+}: PaneProps) {
+  const paneRoot = useRef<HTMLDivElement>(null);
+  const attachmentsByTask = useRef(
+    new Map<string, { id: string; name: string; thumbnail?: string }[]>(),
+  );
   const [connected, setConnected] = useState(false),
     [origin, setOrigin] = useState(""),
     [offline, setOffline] = useState(false),
     [snap, setSnap] = useState<Snapshot>(empty),
-    [view, setView] = useState("assistant"),
-    [selected, setSelected] = useState("assistant"),
+    [view, setView] = useState(
+      selectedId === "assistant" ? "assistant" : "chat",
+    ),
+    [selected, setSelected] = useState(selectedId),
     [query, setQuery] = useState(""),
     [inspector, setInspector] = useState(true),
     [modal, setModal] = useState(""),
@@ -149,7 +172,10 @@ function App() {
     [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([]),
     [voices, setVoices] = useState<{ id: string; name: string }[]>([]),
     [voiceId, setVoiceId] = useState("");
-  const route = useRef<Route>({ view: "assistant", selected: "assistant" });
+  const route = useRef<Route>({
+    view: selectedId === "assistant" ? "assistant" : "chat",
+    selected: selectedId,
+  });
   const positions = useRef(new Map<string, number>());
   const transcripts = useRef(
     new Map<
@@ -164,7 +190,6 @@ function App() {
     >(),
   );
   const pendingScroll = useRef<number | null>(null);
-  const restoreRoute = useRef<(r: Route) => void>(() => {});
   const commandHandler = useRef<(cmd: string) => void>(() => {});
   const selection = useRef(selected),
     epoch = useRef(0),
@@ -260,7 +285,7 @@ function App() {
     if (s.defaultDeviceId)
       setDeviceId((current) => current || s.defaultDeviceId!);
     setOffline(false);
-    if (lastTasks.current) {
+    if (paneId === "left" && lastTasks.current) {
       for (const t of s.tasks) {
         const before = lastTasks.current.get(t.id);
         if (
@@ -318,7 +343,7 @@ function App() {
     const el =
       view === "chat" || view === "assistant"
         ? scroll.current
-        : document.querySelector<HTMLElement>(".page");
+        : paneRoot.current?.querySelector<HTMLElement>(".page");
     if (!el) return;
     if (pendingScroll.current !== null) {
       const chat = view === "chat" || view === "assistant";
@@ -335,54 +360,44 @@ function App() {
     }
   }, [view, selected, messages, natives.length]);
   useEffect(() => {
-    history.replaceState({ workspaceRoute: route.current }, "");
-    history.scrollRestoration = "manual";
-    const pop = (e: PopStateEvent) => {
-      if (e.state?.workspaceRoute) restoreRoute.current(e.state.workspaceRoute);
-    };
-    const down = (e: MouseEvent) => {
-      if (e.button === 3 || e.button === 4) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.button === 3) history.back();
-        else history.forward();
-      }
-    };
-    const cancel = (e: MouseEvent) => {
-      if (e.button === 3 || e.button === 4) e.preventDefault();
-    };
-    window.addEventListener("popstate", pop);
-    window.addEventListener("mousedown", down, true);
-    window.addEventListener("mouseup", cancel, true);
-    window.addEventListener("auxclick", cancel, true);
-    const off = window.desktop.onCommand((cmd) => commandHandler.current(cmd));
-    return () => {
-      window.removeEventListener("popstate", pop);
-      window.removeEventListener("mousedown", down, true);
-      window.removeEventListener("mouseup", cancel, true);
-      window.removeEventListener("auxclick", cancel, true);
-      off();
-    };
-  }, []);
+    if (!activePane) return;
+    return window.desktop.onCommand((cmd) => commandHandler.current(cmd));
+  }, [activePane]);
   useEffect(() => {
     function key(e: KeyboardEvent) {
-      if (
-        (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) ||
-        (e.metaKey && (e.key === "[" || e.key === "]"))
-      ) {
-        e.preventDefault();
-        if (e.key === "ArrowLeft" || e.key === "[") history.back();
-        else history.forward();
-        return;
-      }
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && (activePane || modal || preview)) {
         setModal("");
         setPreview(null);
-        stopVoice(false);
+        if (dictation.current) stopVoice(false);
       }
     }
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
+  }, [activePane, modal, preview]);
+  useEffect(() => {
+    visit(
+      {
+        view: selectedId === "assistant" ? "assistant" : "chat",
+        selected: selectedId,
+      },
+      false,
+    );
+  }, [selectedId]);
+  useEffect(() => {
+    if (!voiceOpen && !dictation.current) {
+      stopVoice(false);
+      audio.current?.pause();
+    }
+  }, [voiceOpen]);
+  useEffect(() => {
+    if (paneId === "right" && !split) stopVoice(false);
+  }, [split]);
+  useEffect(() => {
+    const claim = (event: globalThis.Event) => {
+      if ((event as CustomEvent).detail !== paneId) stopVoice(false);
+    };
+    window.addEventListener("workspace-audio-claim", claim);
+    return () => window.removeEventListener("workspace-audio-claim", claim);
   }, []);
   useEffect(() => {
     const stop = () => {
@@ -398,7 +413,8 @@ function App() {
   useEffect(() => {
     if (!modal && !preview) return;
     const previous = document.activeElement as HTMLElement | null;
-    const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+    const dialog =
+      paneRoot.current?.querySelector<HTMLElement>('[role="dialog"]');
     const focusable = () =>
       Array.from(
         dialog?.querySelectorAll<HTMLElement>(
@@ -455,7 +471,7 @@ function App() {
     const el =
       current.view === "chat" || current.view === "assistant"
         ? scroll.current
-        : document.querySelector<HTMLElement>(".page");
+        : paneRoot.current?.querySelector<HTMLElement>(".page");
     if (el) positions.current.set(routeKey(current), el.scrollTop);
     if (current.view === "chat" || current.view === "assistant") {
       transcripts.current.set(current.selected, {
@@ -472,7 +488,7 @@ function App() {
   function visit(next: Route, record = true) {
     if (JSON.stringify(route.current) === JSON.stringify(next)) return;
     savePage();
-    if (record) history.pushState({ workspaceRoute: next }, "");
+    if (record) onSelect(next.selected);
     route.current = next;
     pendingScroll.current = positions.current.get(routeKey(next)) ?? null;
     setModal("");
@@ -483,6 +499,7 @@ function App() {
       return;
     }
     epoch.current++;
+    const selectionBeforeVisit = selection.current;
     selection.current = next.selected;
     const cached = transcripts.current.get(next.selected);
     cursor.current = cached?.cursor ?? 0;
@@ -494,12 +511,12 @@ function App() {
     setOlder(cached?.older ?? null);
     setNativeHistoryCursor(cached?.nativeCursor ?? null);
     setAnswers({});
-    setFiles([]);
+    attachmentsByTask.current.set(selectionBeforeVisit, files);
+    setFiles(attachmentsByTask.current.get(next.selected) || []);
     nearBottom.current = pendingScroll.current === null;
     if (next.external && !cached)
       void work(() => loadNativeMessages(next.external!));
   }
-  restoreRoute.current = (r) => visit(r, false);
   function navigate(v: string) {
     if (v === "assistant") choose("assistant");
     else if (v === "jobs" || v === "sessions") setModal(v);
@@ -572,16 +589,17 @@ function App() {
       }));
       throw e;
     }
-    nearBottom.current = true;
+    if (selection.current === pick) nearBottom.current = true;
     setDrafts((d) => ({ ...d, [pick]: "" }));
-    setFiles([]);
+    attachmentsByTask.current.delete(pick);
+    if (selection.current === pick) setFiles([]);
     if (external) {
       setExternal(null);
       choose("assistant");
       navigate("sessions");
     }
     await refresh();
-    nearBottom.current = true;
+    if (selection.current === pick) nearBottom.current = true;
   }
   async function upload(list: FileList | File[] | null) {
     const incoming = Array.from(list || []);
@@ -684,7 +702,7 @@ function App() {
     setNativeHistoryCursor(r.nextCursor || null);
   }
   useEffect(() => {
-    if (modal !== "voice" || speakerMuted) return;
+    if (!voiceOpen || speakerMuted) return;
     let dead = false;
     let timer: ReturnType<typeof setTimeout>;
     let offset = 0;
@@ -697,7 +715,7 @@ function App() {
           if (
             dead ||
             event.type !== "assistant_message" ||
-            capture.current ||
+            activeCapturePane !== null ||
             document.hidden
           )
             continue;
@@ -707,7 +725,7 @@ function App() {
           });
           if (
             dead ||
-            capture.current ||
+            activeCapturePane !== null ||
             generation !== voiceGeneration.current ||
             document.hidden
           )
@@ -756,11 +774,16 @@ function App() {
       clearTimeout(timer);
       audio.current?.pause();
     };
-  }, [modal, speakerMuted]);
+  }, [voiceOpen, speakerMuted]);
 
   async function startVoice(draftOnly = false) {
+    if (voiceState === "starting") return;
+    if (capture.current) stopVoice(false);
+    window.dispatchEvent(
+      new CustomEvent("workspace-audio-claim", { detail: paneId }),
+    );
     dictation.current = draftOnly ? { target: selection.current } : null;
-    if (capture.current || voiceState === "starting") return;
+    activeCapturePane = paneId;
     const generation = ++voiceGeneration.current;
     setError("");
     audio.current?.pause();
@@ -844,11 +867,13 @@ function App() {
         throw e;
       }
     } catch (e) {
+      if (activeCapturePane === paneId) activeCapturePane = null;
       setVoiceState("idle");
       fail(e);
     }
   }
   function stopVoice(submit: boolean) {
+    if (activeCapturePane === paneId) activeCapturePane = null;
     voiceGeneration.current++;
     const s = capture.current;
     if (!s) {
@@ -899,6 +924,7 @@ function App() {
       audio: btoa(binary),
       draftOnly: !!draftTarget,
       contextTaskId:
+        !draftTarget ||
         selection.current === "assistant" ||
         selection.current.startsWith("native:")
           ? undefined
@@ -927,6 +953,9 @@ function App() {
       });
   }
   async function speak(m: Message) {
+    window.dispatchEvent(
+      new CustomEvent("workspace-audio-claim", { detail: paneId }),
+    );
     audio.current?.pause();
     const generation = ++voiceGeneration.current;
     const r = await request("/v1/voice/speech", { eventId: Number(m.id) });
@@ -943,70 +972,166 @@ function App() {
   const heading =
     external?.title ||
     (selected === "assistant" ? "Asistan" : task ? title(task) : "Sohbet");
+  function openTask(id: string, beside = false) {
+    setModal("");
+    if (beside) onSplit(id);
+    else choose(id);
+  }
   const row = (t: Task) => (
-    <button
-      className={"task-row " + (selected === t.id ? "selected" : "")}
-      key={t.id}
-      onClick={() => choose(t.id)}
-    >
-      <span className={"status-dot " + t.status} />
-      <span className="grow">
-        <strong>{title(t)}</strong>
-        <small>
-          {t.deviceId || "local"} · {t.provider} · {time(t.updatedAt)}
-        </small>
-      </span>
-      <ChevronRight size={15} />
-    </button>
+    <div className="session-choice" key={t.id}>
+      <button
+        className={"task-row " + (selected === t.id ? "selected" : "")}
+        onClick={(e) => openTask(t.id, e.shiftKey)}
+      >
+        <span className={"status-dot " + t.status} />
+        <span className="grow">
+          <strong>{title(t)}</strong>
+          <small>
+            {t.deviceId || "local"} · {t.provider} · {time(t.updatedAt)}
+          </small>
+        </span>
+        <ChevronRight size={15} />
+      </button>
+      <button
+        className="open-beside icon"
+        title="Sağda aç · Shift+tıkla"
+        aria-label={title(t) + " — sağda aç"}
+        onClick={() => openTask(t.id, true)}
+      >
+        <Columns2 size={16} />
+      </button>
+    </div>
   );
   return (
-    <div className="app">
+    <div
+      className={"app" + (split ? " split-pane-app" : "")}
+      ref={paneRoot}
+      onFocusCapture={onFocusPane}
+      onPointerDownCapture={onFocusPane}
+    >
+      {voiceOpen &&
+        voiceTarget &&
+        createPortal(
+          <VoiceDock
+            state={dictation.current ? "idle" : voiceState}
+            elapsed={voiceElapsed}
+            level={micLevel}
+            muted={speakerMuted}
+            microphones={microphones}
+            micId={micId}
+            onMicId={setMicId}
+            onDevices={() =>
+              void navigator.mediaDevices
+                .enumerateDevices()
+                .then((ds) =>
+                  setMicrophones(ds.filter((d) => d.kind === "audioinput")),
+                )
+                .catch(fail)
+            }
+            onStart={() => void startVoice()}
+            onStop={stopVoice}
+            onMute={() => {
+              audio.current?.pause();
+              setSpeakerMuted((v) => !v);
+              if (voiceState === "speaking") setVoiceState("idle");
+            }}
+            onClose={() => {
+              stopVoice(false);
+              onVoice(false);
+            }}
+          />,
+          voiceTarget,
+        )}
       <main>
         <header>
           <div className="breadcrumb">
-            {selected !== "assistant" && (
+            {!split && selected !== "assistant" && (
               <button onClick={() => choose("assistant")}>
                 <Sparkles size={16} /> Asistana dön
               </button>
             )}
           </div>
           <div className="header-actions">
-            <button onClick={() => setModal("jobs")} aria-label="İşler">
-              <Layers size={16} /> İşler{" "}
-              {active.length > 0 && (
-                <span className="count">{active.length}</span>
-              )}
-            </button>
-            <button
-              className="header-voice"
-              onClick={() => {
-                stopVoice(false);
-                setModal("voice");
-                setVoiceState("idle");
-              }}
-            >
-              <Mic size={16} /> Sesli asistan
-            </button>
+            {split && (
+              <>
+                <button
+                  className="icon"
+                  title="Oturumlar"
+                  aria-label="Oturumlar"
+                  onClick={() => setModal("sessions")}
+                >
+                  <MessageSquare size={17} />
+                </button>
+                <button
+                  className="icon"
+                  title="Ayarlar"
+                  aria-label="Ayarlar"
+                  onClick={() => setModal("settings")}
+                >
+                  <Settings size={17} />
+                </button>
+              </>
+            )}
+            {!split && (
+              <button onClick={() => setModal("jobs")} aria-label="İşler">
+                <Layers size={16} /> İşler{" "}
+                {active.length > 0 && (
+                  <span className="count">{active.length}</span>
+                )}
+              </button>
+            )}
+            {paneId === "left" && (
+              <button
+                className="header-voice"
+                aria-label="Sesli asistan"
+                title="Sesli asistan"
+                aria-pressed={voiceOpen}
+                onClick={() => {
+                  stopVoice(false);
+                  onVoice(!voiceOpen);
+                  setVoiceState("idle");
+                }}
+              >
+                <Mic size={16} /> <span>Sesli asistan</span>
+              </button>
+            )}
 
-            <span className="today">
-              {new Date().toLocaleDateString("tr", {
-                day: "numeric",
-                month: "long",
-                weekday: "long",
-              })}
-            </span>
-            <button
-              className="icon"
-              title="Ayrıntı paneli"
-              aria-label="Ayrıntı paneli"
-              onClick={() => setInspector(!inspector)}
-            >
-              <PanelRight size={18} />
-            </button>
+            {!split && (
+              <span className="today">
+                {new Date().toLocaleDateString("tr", {
+                  day: "numeric",
+                  month: "long",
+                  weekday: "long",
+                })}
+              </span>
+            )}
+            {!split && (
+              <button
+                className="icon"
+                title="Ayrıntı paneli"
+                aria-label="Ayrıntı paneli"
+                onClick={() => setInspector(!inspector)}
+              >
+                <PanelRight size={18} />
+              </button>
+            )}
             <button className="new-button" onClick={() => setModal("new")}>
               <Plus size={15} />
               Yeni oturum
             </button>
+            {onClose && (
+              <button
+                className="icon"
+                title="Sağ sohbeti kapat"
+                aria-label="Sağ sohbeti kapat"
+                onClick={() => {
+                  stopVoice(false);
+                  onClose();
+                }}
+              >
+                <X size={18} />
+              </button>
+            )}
           </div>
         </header>
         {error && (
@@ -1048,9 +1173,75 @@ function App() {
             <small>Mevcut Agent Workspace sunucusunu kullanır.</small>
           </div>
         ) : (
-          <div className={"workspace " + (!inspector ? "wide" : "")}>
+          <div className={"workspace " + (!inspector || split ? "wide" : "")}>
             <section className="conversation">
-              {selected !== "assistant" && (
+              {split && (
+                <div className="pane-heading">
+                  <div className="pane-title">
+                    <h2 title={heading}>{heading}</h2>
+                    {task && <Badge task={task} />}
+                  </div>
+                  <div className="pane-metadata">
+                    <span title="Cihaz">
+                      {snap.devices?.find((d) => d.id === task?.deviceId)
+                        ?.name ||
+                        task?.deviceId ||
+                        "Bu bilgisayar"}
+                    </span>
+                    <span title="Sağlayıcı">{task?.provider || "codex"}</span>
+                    {task && (
+                      <span title="Son hareket">
+                        Son hareket {time(task.updatedAt)}
+                      </span>
+                    )}
+                    {task && isActive(task) && (
+                      <button
+                        className="icon"
+                        title="İşi durdur"
+                        aria-label="İşi durdur"
+                        onClick={() => setModal("cancel")}
+                      >
+                        <Square size={12} />
+                      </button>
+                    )}
+                  </div>
+                  <div
+                    className="pane-jobs"
+                    onWheel={(e) => {
+                      if (
+                        e.currentTarget.scrollWidth >
+                        e.currentTarget.clientWidth
+                      )
+                        e.currentTarget.scrollLeft +=
+                          Math.abs(e.deltaX) > Math.abs(e.deltaY)
+                            ? e.deltaX
+                            : e.deltaY;
+                    }}
+                  >
+                    <button
+                      className="pane-jobs-all"
+                      onClick={() => setModal("jobs")}
+                    >
+                      <Layers size={14} /> İşler
+                    </button>
+                    {(selected === "assistant"
+                      ? active
+                      : children.filter(isActive)
+                    ).map((t) => (
+                      <button
+                        className="job-chip"
+                        title={title(t)}
+                        key={t.id}
+                        onClick={(e) => openTask(t.id, e.shiftKey)}
+                      >
+                        <span className={"status-dot " + t.status} />
+                        <span>{title(t)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!split && selected !== "assistant" && (
                 <div className="chat-heading">
                   <div className="inline">
                     <div className="assistant-mark">
@@ -1128,113 +1319,123 @@ function App() {
                         {groupedWork.before.get(m.id)?.map((group: any) => (
                           <WorkGroup key={group.id} run={group} />
                         ))}
-                        {m.visual ? <InlineVisual visual={m.visual} /> : <article className={"message " + m.role}>
-                          <div className="message-body">
-                            <Markdown
-                              urlTransform={(url) =>
-                                url.startsWith("file:")
-                                  ? url
-                                  : /^(https?:|mailto:|\/|#)/i.test(url)
+                        {m.visual ? (
+                          <InlineVisual visual={m.visual} />
+                        ) : (
+                          <article className={"message " + m.role}>
+                            <div className="message-body">
+                              <Markdown
+                                urlTransform={(url) =>
+                                  url.startsWith("file:")
                                     ? url
-                                    : ""
-                              }
-                              remarkPlugins={[remarkGfm]}
-                              components={{
-                                a: ({ href, children }) => (
-                                  <a
-                                    href={href}
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      if (href)
-                                        void work(async () => {
-                                          if (
-                                            href.startsWith("/") ||
-                                            href.startsWith("file:")
-                                          ) {
-                                            const file = await request(
-                                              "/v1/artifacts/open",
-                                              {
-                                                path: href,
-                                                deviceId:
-                                                  task?.deviceId ||
-                                                  external?.deviceId ||
-                                                  snap.localDeviceId,
-                                              },
-                                            );
-                                            if (
-                                              !/\.(html?|pdf|png|jpe?g|webp|gif|txt|md|markdown|json|csv|log|ts|tsx|js|jsx|py|css|yaml|yml|xml)$/i.test(
-                                                file.name,
-                                              ) ||
-                                              file.size > 5 * 1024 * 1024
-                                            ) {
-                                              await window.desktop.saveAttachment(
-                                                file.id,
-                                              );
-                                            } else
-                                              setPreview(
-                                                file.content === undefined
-                                                  ? await request(
-                                                      "/v1/attachments/" +
-                                                        file.id,
-                                                    )
-                                                  : file,
-                                              );
-                                          } else
-                                            await window.desktop.openLink(href);
-                                        });
-                                    }}
-                                  >
-                                    {children}
-                                  </a>
-                                ),
-                                img: ({ alt }) => (
-                                  <span className="quiet">[Görsel: {alt}]</span>
-                                ),
-                              }}
-                            >
-                              {m.text}
-                            </Markdown>
-                            {m.attachments?.map((a) => (
-                              <button
-                                className="attachment"
-                                key={a.id}
-                                onClick={() =>
-                                  void work(async () =>
-                                    setPreview(
-                                      await request("/v1/attachments/" + a.id),
-                                    ),
-                                  )
+                                    : /^(https?:|mailto:|\/|#)/i.test(url)
+                                      ? url
+                                      : ""
                                 }
+                                remarkPlugins={[remarkGfm]}
+                                components={{
+                                  a: ({ href, children }) => (
+                                    <a
+                                      href={href}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        if (href)
+                                          void work(async () => {
+                                            if (
+                                              href.startsWith("/") ||
+                                              href.startsWith("file:")
+                                            ) {
+                                              const file = await request(
+                                                "/v1/artifacts/open",
+                                                {
+                                                  path: href,
+                                                  deviceId:
+                                                    task?.deviceId ||
+                                                    external?.deviceId ||
+                                                    snap.localDeviceId,
+                                                },
+                                              );
+                                              if (
+                                                !/\.(html?|pdf|png|jpe?g|webp|gif|txt|md|markdown|json|csv|log|ts|tsx|js|jsx|py|css|yaml|yml|xml)$/i.test(
+                                                  file.name,
+                                                ) ||
+                                                file.size > 5 * 1024 * 1024
+                                              ) {
+                                                await window.desktop.saveAttachment(
+                                                  file.id,
+                                                );
+                                              } else
+                                                setPreview(
+                                                  file.content === undefined
+                                                    ? await request(
+                                                        "/v1/attachments/" +
+                                                          file.id,
+                                                      )
+                                                    : file,
+                                                );
+                                            } else
+                                              await window.desktop.openLink(
+                                                href,
+                                              );
+                                          });
+                                      }}
+                                    >
+                                      {children}
+                                    </a>
+                                  ),
+                                  img: ({ alt }) => (
+                                    <span className="quiet">
+                                      [Görsel: {alt}]
+                                    </span>
+                                  ),
+                                }}
                               >
-                                <FileText size={17} />
-                                {a.name}
-                                <ChevronRight size={14} />
-                              </button>
-                            ))}
-                          </div>
-                          <div className="message-actions">
-                            <CopyMessage text={m.text} />
-                            {m.role === "assistant" &&
-                              selected === "assistant" && (
+                                {m.text}
+                              </Markdown>
+                              {m.attachments?.map((a) => (
                                 <button
-                                  aria-label="Yanıtı seslendir"
-                                  title="Yanıtı seslendir"
-                                  onClick={() => void work(() => speak(m))}
+                                  className="attachment"
+                                  key={a.id}
+                                  onClick={() =>
+                                    void work(async () =>
+                                      setPreview(
+                                        await request(
+                                          "/v1/attachments/" + a.id,
+                                        ),
+                                      ),
+                                    )
+                                  }
                                 >
-                                  <Volume2 size={13} />
-                                  Seslendir
+                                  <FileText size={17} />
+                                  {a.name}
+                                  <ChevronRight size={14} />
                                 </button>
-                              )}
-                          </div>
-                          {m.created && (
-                            <time
-                              className="message-time"
-                              dateTime={new Date(m.created).toISOString()}
-                            >
-                              {time(m.created)}
-                            </time>
-                          )}
-                        </article>}
+                              ))}
+                            </div>
+                            <div className="message-actions">
+                              <CopyMessage text={m.text} />
+                              {m.role === "assistant" &&
+                                selected === "assistant" && (
+                                  <button
+                                    aria-label="Yanıtı seslendir"
+                                    title="Yanıtı seslendir"
+                                    onClick={() => void work(() => speak(m))}
+                                  >
+                                    <Volume2 size={13} />
+                                    Seslendir
+                                  </button>
+                                )}
+                            </div>
+                            {m.created && (
+                              <time
+                                className="message-time"
+                                dateTime={new Date(m.created).toISOString()}
+                              >
+                                {time(m.created)}
+                              </time>
+                            )}
+                          </article>
+                        )}
                       </React.Fragment>
                     ))}
                   </>
@@ -1462,17 +1663,21 @@ function App() {
                       type="button"
                       className="dictation-button"
                       title={
-                        voiceState === "recording"
+                        voiceState === "recording" && !!dictation.current
                           ? "Dikteyi bitir"
                           : "Dikte — taslağa yaz"
                       }
                       aria-label="Dikte — taslağa yaz"
-                      aria-pressed={voiceState === "recording"}
+                      aria-pressed={
+                        voiceState === "recording" && !!dictation.current
+                      }
                       disabled={
-                        voiceState === "sending" || voiceState === "starting"
+                        voiceState === "sending" ||
+                        voiceState === "starting" ||
+                        (voiceState === "recording" && !dictation.current)
                       }
                       onClick={() =>
-                        voiceState === "recording"
+                        voiceState === "recording" && !!dictation.current
                           ? stopVoice(true)
                           : void startVoice(true)
                       }
@@ -1526,7 +1731,7 @@ function App() {
                 </div>
               </div>
             </section>
-            {inspector && (
+            {inspector && !split && (
               <aside className="inspector">
                 <div className="section-heading">
                   <h3>
@@ -1617,7 +1822,6 @@ function App() {
             if (e.target === e.currentTarget) {
               setModal("");
               setPreview(null);
-              stopVoice(false);
             }
           }}
         >
@@ -1638,7 +1842,8 @@ function App() {
                         : "Çalışma alanı işlemi"
             }
             className={
-              "modal " + (modal === "jobs" ? "jobs-modal " : "") +
+              "modal " +
+              (modal === "jobs" ? "jobs-modal " : "") +
               (modal === "voice"
                 ? "voice-modal"
                 : preview
@@ -1652,8 +1857,6 @@ function App() {
               onClick={() => {
                 setModal("");
                 setPreview(null);
-                stopVoice(false);
-                audio.current?.pause();
               }}
             >
               <X size={20} />
@@ -1677,25 +1880,39 @@ function App() {
                     snap.tasks.filter((t) => !!t.parentTaskId),
                     snap.assistantId,
                   ).map(({ task: t, depth, path, childCount }: any) => (
-                    <button
-                      className={"job-card tree-job " + (depth ? "nested" : "")}
-                      style={{ marginLeft: Math.min(depth, 6) * 24 }}
+                    <div
+                      className="job-choice"
                       key={t.id}
-                      onClick={() => choose(t.id)}
+                      style={{ marginLeft: Math.min(depth, 6) * 24 }}
                     >
-                      <small className="tree-path" title={path.join(" → ")}>
-                        {path.join(" → ")}
-                      </small>
-                      <h3>{title(t)}</h3>
-                      <div>
-                        <Badge task={t} />
-                        <span className="quiet">
-                          {t.provider} · {t.deviceId || "yerel"}
-                          {childCount > 0 ? ` · ${childCount} alt görev` : ""}
-                        </span>
-                        <span className="quiet">{date(t.updatedAt)}</span>
-                      </div>
-                    </button>
+                      <button
+                        className={
+                          "job-card tree-job " + (depth ? "nested" : "")
+                        }
+                        onClick={(e) => openTask(t.id, e.shiftKey)}
+                      >
+                        <small className="tree-path" title={path.join(" → ")}>
+                          {path.join(" → ")}
+                        </small>
+                        <h3>{title(t)}</h3>
+                        <div>
+                          <Badge task={t} />
+                          <span className="quiet">
+                            {t.provider} · {t.deviceId || "yerel"}
+                            {childCount > 0 ? ` · ${childCount} alt görev` : ""}
+                          </span>
+                          <span className="quiet">{date(t.updatedAt)}</span>
+                        </div>
+                      </button>
+                      <button
+                        className="open-beside icon"
+                        title="Sağda aç · Shift+tıkla"
+                        aria-label={title(t) + " — sağda aç"}
+                        onClick={() => openTask(t.id, true)}
+                      >
+                        <Columns2 size={16} />
+                      </button>
+                    </div>
                   ))}
                   {!snap.tasks.some((t) => !!t.parentTaskId) && (
                     <p>Henüz iş yok.</p>
@@ -1807,6 +2024,12 @@ function App() {
             {modal === "settings" && (
               <>
                 <h2>Ayarlar</h2>
+                {split && (
+                  <UsageLimits
+                    deviceId={task?.deviceId || snap.localDeviceId}
+                    connected={connected && !offline}
+                  />
+                )}
                 <AppearanceSettings />
                 <div className="settings-card">
                   <strong>Bilgisayar bağlantısı</strong>
@@ -1924,123 +2147,6 @@ function App() {
                 </button>
               </>
             )}
-            {modal === "voice" && (
-              <>
-                <span className="eyebrow">SESLİ ASİSTAN</span>
-                <div className={"orb " + voiceState}>
-                  <Sparkles size={54} />
-                </div>
-                <h2>
-                  {voiceState === "recording"
-                    ? "Seni dinliyorum."
-                    : voiceState === "sending"
-                      ? "Asistanına iletiyorum…"
-                      : voiceState === "speaking"
-                        ? "Asistanın konuşuyor."
-                        : voiceState === "sent"
-                          ? "Yanıt bekleniyor…"
-                          : "Aklındakini söyle."}
-                </h2>
-                <p>
-                  {voiceState === "recording"
-                    ? voiceElapsed + " / 30 saniye"
-                    : "Aynı asistan. Bu kez, sesinle."}
-                </p>
-                <button
-                  className="secondary"
-                  aria-pressed={speakerMuted}
-                  onClick={() => {
-                    audio.current?.pause();
-                    setSpeakerMuted((v) => !v);
-                    if (voiceState === "speaking") setVoiceState("idle");
-                  }}
-                >
-                  <Volume2 size={16} />
-                  {speakerMuted ? "Yanıt sesini aç" : "Yanıt sesini kapat"}
-                </button>
-                <label className="microphone-picker">
-                  Mikrofon
-                  <select
-                    aria-label="Mikrofon"
-                    value={micId}
-                    disabled={["starting", "recording", "sending"].includes(
-                      voiceState,
-                    )}
-                    onFocus={() =>
-                      void navigator.mediaDevices
-                        .enumerateDevices()
-                        .then((ds) =>
-                          setMicrophones(
-                            ds.filter((d) => d.kind === "audioinput"),
-                          ),
-                        )
-                        .catch(fail)
-                    }
-                    onChange={(e) => setMicId(e.target.value)}
-                  >
-                    <option value="">Sistem varsayılanı</option>
-                    {microphones
-                      .filter((d) => d.deviceId !== "default")
-                      .map((d, i) => (
-                        <option key={d.deviceId} value={d.deviceId}>
-                          {d.label || "Mikrofon " + (i + 1)}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-                {voiceState === "recording" && (
-                  <div className="mic-meter">
-                    <meter
-                      aria-label="Mikrofon ses seviyesi"
-                      min={0}
-                      max={1}
-                      value={micLevel}
-                    />
-                    <small>
-                      {micLevel > 0.01
-                        ? "Ses alınıyor"
-                        : "Ses bekleniyor — gösterge hareket etmiyorsa mikrofonu kontrol et."}
-                    </small>
-                  </div>
-                )}
-                <div className="inline voice-controls">
-                  {voiceState === "recording" ? (
-                    <>
-                      <button
-                        className="secondary"
-                        onClick={() => stopVoice(false)}
-                      >
-                        <X size={18} />
-                        Vazgeç
-                      </button>
-                      <button
-                        className="primary"
-                        onClick={() => stopVoice(true)}
-                      >
-                        <ArrowUp size={18} />
-                        Gönder
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      className="primary"
-                      disabled={["starting", "sending"].includes(voiceState)}
-                      onClick={() => void startVoice()}
-                    >
-                      <Mic size={19} />
-                      {voiceState === "starting"
-                        ? "Mikrofon açılıyor…"
-                        : "Konuşmaya başla"}
-                    </button>
-                  )}
-                </div>
-                <small>
-                  Mikrofon yalnızca sen başlattığında açılır.
-                  <br />
-                  Kaydı gönderdiğinde ElevenLabs üzerinden yazıya çevrilir.
-                </small>
-              </>
-            )}
             {preview && (
               <>
                 <span className="eyebrow">EKLİ DOSYA</span>
@@ -2077,4 +2183,6 @@ function App() {
     </div>
   );
 }
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <WorkspaceLayout Pane={App} />,
+);
