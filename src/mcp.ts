@@ -1,3 +1,4 @@
+import { SESSION_LINK_INSTRUCTIONS } from "./workspace/session-links.js";
 import { VISUAL_INSTRUCTIONS } from "./workspace/visuals.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -12,7 +13,7 @@ const descriptions: Record<Tool, string> = {
     "Publish previewed HTML directly inside this conversation on desktop and mobile. Pass exactly the previewed HTML, previewId, short title and stable clientRequestId. Creates a persistent interactive chat item, not an external link. " +
     VISUAL_INSTRUCTIONS,
   delegate_task:
-    "Create a durable child session on Claude Code or Codex. Use a stable clientRequestId on retries. async returns immediately; wait times out without cancellation. Supply a self-contained brief; parent history is not copied.",
+    "Create a durable child session on Claude Code or Codex. Use a stable clientRequestId on retries. async returns immediately; wait times out without cancellation. Supply a self-contained brief; parent history is not copied. " + SESSION_LINK_INSTRUCTIONS,
   send_to_subagent:
     "Continue the same child session. queue runs after current work; steer is Codex-only; interrupt_and_restart interrupts the current turn, then resumes the native session. Previous run results remain immutable. Call this when parent context changes.",
   get_task_status:

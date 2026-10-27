@@ -103,3 +103,12 @@ The voice-dock recording checks opening, muting/unmuting, and closing without
 starting a microphone recording. Its idle gate reports the intentional sphere
 animation; the next action targets the stable speaker button. A new spoken
 conversation was not recorded during this layout verification.
+
+### Conversation links
+
+Agents use `[descriptive name](agent-workspace://session/TASK_UUID)` to reference a
+verified orchestrator task. Click to navigate in the current pane; Shift-click
+opens the task beside the assistant. Android follows the same link in its chat
+navigation stack. Only exact task UUIDs in the current workspace are accepted;
+missing tasks show an error. Arbitrary text and old messages are not matched by
+name. Provider prompts and the delegation tool document the link format.

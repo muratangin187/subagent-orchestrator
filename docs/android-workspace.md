@@ -208,3 +208,9 @@ silently interrupt and restart Claude. Background notifications stay queued and
 are not shown as user steering cards.
 
 Usage indicators display **remaining quota** (`100 - usedPercent`), including both sidebar bars, the mobile ring and all detail rows. The summary selects the window with the least remaining quota; missing data remains unknown, never 100%.
+
+Conversation references use `agent-workspace://session/TASK_UUID` Markdown links.
+They open the known workspace task and retain Back navigation; unknown task IDs
+show an unavailable message. While conversation history is first loading, the
+chat shows a loading/connection state instead of the empty conversation greeting.
+Cached messages remain visible while they refresh.

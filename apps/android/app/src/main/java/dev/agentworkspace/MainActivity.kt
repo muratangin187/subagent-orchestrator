@@ -562,7 +562,14 @@ fun WorkspaceApp(model: WorkspaceModel) {
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        if (visibleLines.isEmpty())
+                        if (visibleLines.isEmpty() && !s.historyLoaded)
+                            item {
+                                Column(Modifier.fillMaxWidth().padding(48.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                    if (s.online) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                                    Text(if (s.online) "Sohbet yükleniyor…" else "Sohbet geçmişi için bağlantı bekleniyor…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        else if (visibleLines.isEmpty())
                             item {
                                 Column(
                                     Modifier.fillMaxWidth().padding(top = 48.dp, bottom = 24.dp),
@@ -617,7 +624,11 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                         if (line.visual != null) {
                                             InlineVisual(model, line.visual)
                                         } else {
-                                            MarkdownMessage(line.text) { path -> model.openFileLink(path, (current ?: model.nativeSelection)?.optString("deviceId")?.takeIf { it.isNotBlank() } ?: s.snapshot.optString("localDeviceId")) }
+                                            MarkdownMessage(line.text, onSessionLink = { id ->
+                                                val linked = tasks.find { it.optString("id") == id }
+                                                if (linked != null) openTask(linked)
+                                                else android.widget.Toast.makeText(context, "Bu oturum bulunamadı veya artık erişilemiyor.", android.widget.Toast.LENGTH_LONG).show()
+                                            }) { path -> model.openFileLink(path, (current ?: model.nativeSelection)?.optString("deviceId")?.takeIf { it.isNotBlank() } ?: s.snapshot.optString("localDeviceId")) }
                                         }
                                         line.attachments.forEach { attachment ->
                                             Spacer(Modifier.height(10.dp))

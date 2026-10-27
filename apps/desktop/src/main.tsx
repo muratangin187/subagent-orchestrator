@@ -1,3 +1,4 @@
+import { sessionLinkId } from "./session-links.mjs";
 import { createPortal } from "react-dom";
 import { WorkspaceLayout, type PaneProps } from "./WorkspaceLayout";
 import { VoiceDock } from "./VoiceDock";
@@ -1326,7 +1327,7 @@ function App({
                             <div className="message-body">
                               <Markdown
                                 urlTransform={(url) =>
-                                  url.startsWith("file:")
+                                  (sessionLinkId(url) || url.startsWith("file:"))
                                     ? url
                                     : /^(https?:|mailto:|\/|#)/i.test(url)
                                       ? url
@@ -1339,6 +1340,15 @@ function App({
                                       href={href}
                                       onClick={(e) => {
                                         e.preventDefault();
+                                        const linkedId = sessionLinkId(href);
+                                        if (linkedId) {
+                                          const linked = snap.tasks.find((t) => t.id === linkedId);
+                                          if (!linked) { setError("Bu oturum bulunamadı veya artık erişilemiyor."); return; }
+                                          const id = linkedId === snap.assistantId ? "assistant" : linkedId;
+                                          if (e.shiftKey) onSplit(id);
+                                          else visit({ view: id === "assistant" ? "assistant" : "chat", selected: id });
+                                          return;
+                                        }
                                         if (href)
                                           void work(async () => {
                                             if (

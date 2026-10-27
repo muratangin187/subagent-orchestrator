@@ -46,6 +46,7 @@ data class ScreenState(
     val workGroups: Map<String, WorkActivityRun> = emptyMap(),
     val rejected: List<Pair<String, String>> = emptyList(),
     val loading: Boolean = false,
+    val historyLoaded: Boolean = false,
     val openingAttachment: String? = null,
     val attachmentPreview: AttachmentPreview? = null,
     val attached: List<Pair<String, String>> = emptyList(),
@@ -134,6 +135,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
         nativeSelection = null
         update {
             it.copy(
+                historyLoaded = false,
                 lines =
                     runCatching { decodeLines(JSONArray(repo.local.get("chat:$id") ?: "[]")) }
                         .getOrDefault(emptyList()),
@@ -148,7 +150,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
         attachmentGeneration++
         selected = "new"
         nativeSelection = null
-        update { it.copy(lines = emptyList(), attached = emptyList(), attachedThumbnails = emptyMap(), workGroups = emptyMap(), toolLines = emptyList()) }
+        update { it.copy(historyLoaded = true, lines = emptyList(), attached = emptyList(), attachedThumbnails = emptyMap(), workGroups = emptyMap(), toolLines = emptyList()) }
     }
 
     private fun text(content: Any?): String =
@@ -312,6 +314,7 @@ class WorkspaceModel(app: Application) : AndroidViewModel(app) {
                                     streams.map { (key, value) ->
                                         ChatLine(events.objects().first { e -> e.optString("type") == "assistant_delta" && e.optString("runId") + ":" + (e.optJSONObject("payload")?.optString("itemId") ?: "") == key }.optString("id"), "assistant", value.toString(), runId = key.substringBefore(":"))
                                     },
+                            historyLoaded = true,
                             toolLines = tools,
                             workGroups = workActivitySegments(events.objects()),
                         )

@@ -26,8 +26,9 @@ import io.noties.markwon.ext.tasklist.TaskListPlugin
 
 /** Native spans: no WebView, executable HTML or automatic remote image fetching. */
 @Composable
-fun MarkdownMessage(markdown: String, onFileLink: (String) -> Unit = {}) {
+fun MarkdownMessage(markdown: String, onSessionLink: (String) -> Unit = {}, onFileLink: (String) -> Unit = {}) {
     val context = LocalContext.current
+    val currentSessionLink = androidx.compose.runtime.rememberUpdatedState(onSessionLink)
     val currentFileLink = androidx.compose.runtime.rememberUpdatedState(onFileLink)
     val foreground = LocalContentColor.current.toArgb()
     val link = MaterialTheme.colorScheme.primary.toArgb()
@@ -53,7 +54,10 @@ fun MarkdownMessage(markdown: String, onFileLink: (String) -> Unit = {}) {
                         override fun configureConfiguration(builder: MarkwonConfiguration.Builder) {
                             builder.linkResolver { view, destination ->
                                 val uri = Uri.parse(destination)
-                                if (destination.startsWith("/") || uri.scheme == "file") {
+                                val sessionId = sessionLinkId(destination)
+                                if (sessionId != null) {
+                                    currentSessionLink.value(sessionId)
+                                } else if (destination.startsWith("/") || uri.scheme == "file") {
                                     currentFileLink.value(destination)
                                 } else if (uri.scheme?.lowercase() in setOf("https", "http", "mailto")) {
                                     try {

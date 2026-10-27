@@ -1,3 +1,4 @@
+import { SESSION_LINK_INSTRUCTIONS } from "../workspace/session-links.js";
 import { VISUAL_INSTRUCTIONS } from "../workspace/visuals.js";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -202,7 +203,7 @@ export class CodexDriver implements Driver {
               (ctx.delegation
                 ? "You can delegate subtasks using standalone_children MCP tools. That server binds new tasks to you automatically. Use wait_for_task to receive results; relay relevant context changes with send_to_subagent. Use only this MCP for delegation, not native agent tools or shell-spawned agents. Wait for your children before publishing a combined result."
                 : "Delegation depth limit reached. Do not spawn further agents.")) +
-          (ctx.delegation ? "\n" + VISUAL_INSTRUCTIONS : ""),
+          (ctx.delegation ? "\n" + VISUAL_INSTRUCTIONS : "") + "\n" + SESSION_LINK_INSTRUCTIONS,
       };
       const response = await rpc.request(
         ctx.task.sessionId ? "thread/resume" : "thread/start",
