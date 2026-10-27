@@ -102,7 +102,7 @@ export const labels: Record<string, string> = {
   running: "Çalışıyor",
   queued: "Sırada",
   starting: "Başlıyor",
-  completed: "Tamamlandı",
+  completed: "Tur tamamlandı",
   failed: "Hata",
   cancelled: "İptal",
   waiting_question: "Yanıt bekliyor",

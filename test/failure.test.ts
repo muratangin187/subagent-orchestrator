@@ -20,3 +20,11 @@ test("provider limits distinguish quota, throttling and unrelated failures", () 
   );
   assert.equal(classifyFailure("claude", "Connection reset"), undefined);
 });
+
+test("capacity messages hold work without swallowing unrelated model errors",()=>{
+ for(const message of ["Selected model is at capacity. Please try a different model.", '{"type":"overloaded_error"}']) {
+  assert.equal(classifyFailure("codex",message)?.kind,"capacity");
+  assert.equal(classifyFailure("codex",message)?.automaticRetry,false);
+ }
+ assert.equal(classifyFailure("claude","HTTP 429 model at capacity")?.kind,"rate_limit");
+});

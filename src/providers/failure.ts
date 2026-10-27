@@ -15,9 +15,10 @@ export function classifyFailure(
     /\b429\b|rate_limit_exceeded|rate_limit_error|too many requests|rate limit/i.test(
       error,
     );
-  if (!usage && !rate) return undefined;
+  const capacity = /\bat capacity\b|\boverloaded_error\b|\bmodel.{0,30}\boverloaded\b/i.test(error);
+  if (!usage && !rate && !capacity) return undefined;
   return {
-    kind: usage ? "usage_limit" : "rate_limit",
+    kind: usage ? "usage_limit" : rate ? "rate_limit" : "capacity",
     provider,
     resetHint: error.match(/\bresets?\s+([^\n"}]+)/i)?.[1]?.trim(),
     automaticRetry: false,

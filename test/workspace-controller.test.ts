@@ -655,3 +655,28 @@ test('quiet work warns once per run; waiting children and recent activity are no
     assert.equal(s.c.snapshot().tasks.find(t=>t.id===id)!.quiet,false);
   } finally { await s.close(); }
 });
+
+test('large child results and questions are durably delivered within the command limit',async()=>{
+ const s=setup();try {
+  s.c.submit({id:'large-root',target:'assistant',kind:'assistant',provider:'codex',body:'work'});
+  await until(()=>!!s.drivers[0]?.context);
+  const root=s.c.get('assistant')!;
+  s.drivers[0]!.resolve('ready');await until(()=>s.store.task(root).status==='completed');
+  const parent=s.store.task(root);
+  for(let i=0;i<15;i++)s.store.notify({...parent,owner:`child:${root}`,resultSummary:'x'.repeat(i<2?33000:7000)});
+  s.store.notify({...parent,owner:`child:${root}`,status:'waiting_question',question:{id:'required-question',prompt:'Choose the target',createdAt:Date.now()} } as any);
+  let delivered=0;
+  for(let i=0;i<10 && delivered<16;i++){
+   await s.c.pump();await until(()=>!!s.drivers.at(-1)?.context && s.store.task(root).status==='running');
+   const driver=s.drivers.at(-1)!;assert.ok(driver.context.run.prompt.length<=64000);
+   delivered=Number(s.store.db.prepare('SELECT count(*) AS n FROM workspace_deliveries').get()!.n);
+   driver.resolve('received');await until(()=>s.store.task(root).status==='completed');
+  }
+  assert.equal(delivered,16);
+  const inputs=s.store.db.prepare("SELECT body,state FROM workspace_inputs WHERE id LIKE 'event:%'").all() as any[];
+  assert.ok(inputs.length>1);assert.ok(inputs.every(x=>x.state==='accepted'));
+  assert.ok(inputs.some(x=>x.body.includes('required-question')));
+  assert.ok(inputs.some(x=>x.body.includes('"truncated":true')));
+  await s.c.pump();assert.equal(Number(s.store.db.prepare('SELECT count(*) AS n FROM workspace_deliveries').get()!.n),16);
+ } finally {await s.close()}
+});

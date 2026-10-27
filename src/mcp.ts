@@ -28,7 +28,7 @@ const descriptions: Record<Tool, string> = {
   answer_subagent:
     "Answer the current question using its exact questionId. Codex answers map question IDs to {answers:[text]}; Claude answers map question text to answer text. This does not grant broader permissions.",
   get_notifications:
-    "Read durable completion/failure/question notifications by cursor. For failure.kind usage_limit or rate_limit, report the provider and resetHint to the user; do not automatically retry. Check these while doing other work; standard MCP cannot wake every host automatically.",
+    "Read durable completion/failure/question notifications by cursor. For failure.kind usage_limit, rate_limit or capacity, report the provider and resetHint to the user; do not automatically retry. Check these while doing other work; standard MCP cannot wake every host automatically.",
   orchestrator_capabilities:
     "Read permissions, supported providers and exact steering/recovery semantics. Models are supplied by exact provider model ID; use the CLI models command for the live Codex catalog.",
 };
@@ -38,7 +38,7 @@ export async function startMcp(home: string, scope: Scope) {
     { name: "standalone-agent-orchestrator", version: "0.1.0" },
     {
       instructions:
-        "Use stable clientRequestId values for mutations. Check get_notifications when returning from independent work. Relay changes with send_to_subagent. Do not assume automatic parent transcript access or automatic wake-up. Read capabilities before delegation. Report usage_limit/rate_limit failures to the user, including resetHint when present. Do not retry until provider availability is restored; queued messages are held.",
+        "Use stable clientRequestId values for mutations. Check get_notifications when returning from independent work. Relay changes with send_to_subagent. Do not assume automatic parent transcript access or automatic wake-up. Read capabilities before delegation. Report usage_limit/rate_limit/capacity failures to the user, including resetHint when present. Do not retry until provider availability is restored; queued messages are held.",
     },
   );
   for (const name of Object.keys(schemas) as Tool[])

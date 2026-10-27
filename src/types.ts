@@ -19,7 +19,7 @@ export interface Scope {
   interactionMode: "plan" | "default";
 }
 export interface ProviderFailure {
-  kind: "usage_limit" | "rate_limit";
+  kind: "usage_limit" | "rate_limit" | "capacity";
   provider: Provider;
   resetHint?: string;
   automaticRetry: false;

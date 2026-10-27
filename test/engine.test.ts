@@ -838,3 +838,16 @@ test('repeating the model selection does not manufacture a model change', async 
     assert.equal(s.store.events(t.taskId,0,200).messages.filter(e=>e.type==='model_changed').length,0);
   } finally {await s.close()}
 });
+
+test("capacity failure holds queued follow-ups until explicit continuation", async()=>{
+ const s=setup();try {
+  const task=await delegate(s.engine,{provider:"codex"});await tick();
+  await s.engine.call(scope,"send_to_subagent",{taskId:task.taskId,message:"queued work",mode:"queue",clientRequestId:"before-capacity"});
+  s.drivers[0]!.reject!(new Error("Selected model is at capacity. Please try a different model."));
+  const result=await s.engine.wait(scope,task.taskId,1000) as any;
+  assert.equal(result.failure.kind,"capacity");assert.equal(s.store.commands("held").length,1);
+  await tick();assert.equal(s.drivers.length,1);
+  await s.engine.call(scope,"send_to_subagent",{taskId:task.taskId,message:"Capacity restored; continue",mode:"queue",clientRequestId:"after-capacity"});
+  await tick();assert.equal(s.drivers.length,2);
+ } finally {await s.close()}
+});

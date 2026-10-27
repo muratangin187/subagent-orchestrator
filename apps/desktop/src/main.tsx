@@ -1951,7 +1951,8 @@ function App({
                             {t.provider} · {t.deviceId || "yerel"}
                             {childCount > 0 ? ` · ${childCount} alt görev` : ""}
                           </span>
-                          <span className="quiet">{date(t.updatedAt)}</span>
+                          <span className="quiet">Son hareket {date(t.lastActivityAt ?? t.updatedAt)} · Tur süresi {elapsedLabel(t)}</span>
+                          {t.quiet && <span className="quiet">10 dk boyunca etkinlik alınmadı · Kontrol gerekli</span>}
                         </div>
                       </button>
                       <button
