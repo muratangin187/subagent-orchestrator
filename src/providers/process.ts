@@ -1,6 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { errorText } from "../types.js";
+// Limits are per JSONL line in wire bytes, excluding LF (including any CR).
+const MAX_FRAME_BYTES = 8 * 1024 * 1024;
+const STDERR_BYTES = 4000;
 export function providerEnvironment(): NodeJS.ProcessEnv {
   const env = { ...process.env };
   for (const key of Object.keys(env))
@@ -23,9 +25,10 @@ export class RpcProcess extends EventEmitter {
       timer: NodeJS.Timeout;
     }
   >();
-  private buffer = "";
+  private buffer: Buffer = Buffer.alloc(0);
+  private bufferedBytes = 0;
   private ended = false;
-  private stderr = "";
+  private stderr: Buffer = Buffer.alloc(0);
   constructor(command: string, args: string[], cwd?: string) {
     super();
     this.child = spawn(command, args, {
@@ -34,36 +37,70 @@ export class RpcProcess extends EventEmitter {
       stdio: "pipe",
       windowsHide: true,
     });
-    this.child.stdout.setEncoding("utf8");
-    this.child.stderr.setEncoding("utf8");
-    this.child.stdout.on("data", (chunk: string) => {
-      this.buffer += chunk;
-      if (Buffer.byteLength(this.buffer) > 8 * 1024 * 1024) {
-        this.fail(new Error("Provider frame exceeds 8 MiB"));
-        void this.close();
-        return;
-      }
-      let index: number;
-      while ((index = this.buffer.indexOf("\n")) >= 0) {
-        const line = this.buffer.slice(0, index);
-        this.buffer = this.buffer.slice(index + 1);
+    // Consume synchronously without a decoded-message queue. The pipe retains
+    // its native backpressure; retain at most one bounded incomplete line.
+    this.child.stdout.on("data", (chunk: Buffer) => {
+      if (this.ended) return;
+      let start = 0;
+      while (start < chunk.length) {
+        const newline = chunk.indexOf(10, start);
+        const end = newline < 0 ? chunk.length : newline;
+        const size = this.bufferedBytes + end - start;
+        if (size > MAX_FRAME_BYTES) {
+          this.stop(new Error("Provider frame exceeds 8 MiB"));
+          return;
+        }
+        if (size > this.buffer.length) {
+          const grown = Buffer.allocUnsafe(
+            Math.min(
+              MAX_FRAME_BYTES,
+              Math.max(size, 4096, this.buffer.length * 2),
+            ),
+          );
+          this.buffer.copy(grown, 0, 0, this.bufferedBytes);
+          this.buffer = grown;
+        }
+        chunk.copy(this.buffer, this.bufferedBytes, start, end);
+        this.bufferedBytes = size;
+        if (newline < 0) return;
+        const line = this.buffer.toString("utf8", 0, size);
+        this.bufferedBytes = 0;
+        start = newline + 1;
         if (!line.trim()) continue;
         try {
           this.receive(JSON.parse(line));
-        } catch (e) {
-          this.fail(new Error(`Invalid provider frame: ${errorText(e)}`));
-          void this.close();
+        } catch {
+          // JSON.parse error messages can quote private provider content.
+          this.stop(new Error("Invalid provider frame"));
+          return;
         }
+        if (this.ended) return;
       }
     });
-    this.child.stderr.on("data", (chunk: string) => {
-      this.stderr = (this.stderr + chunk).slice(-4000);
+    this.child.stdout.on("end", () => {
+      if (this.bufferedBytes > 0)
+        this.stop(new Error("Incomplete provider frame at EOF"));
+    });
+    this.child.stderr.on("data", (chunk: Buffer) => {
+      if (this.ended) return;
+      const tail = chunk.subarray(Math.max(0, chunk.length - STDERR_BYTES));
+      this.stderr = Buffer.concat([
+        this.stderr.subarray(
+          Math.max(0, this.stderr.length + tail.length - STDERR_BYTES),
+        ),
+        tail,
+      ]);
     });
     this.child.on("error", (e) => this.fail(e));
-    this.child.on("exit", (code, signal) =>
+    // close follows stdout EOF, unlike exit which may precede pipe draining.
+    this.child.on("close", (code, signal) =>
       this.fail(new Error(`Provider exited (${code ?? signal})`)),
     );
     this.child.stdin.on("error", (e) => this.fail(e));
+  }
+  private stop(error: Error) {
+    this.fail(error);
+    void this.close();
   }
   private receive(msg: any) {
     if (msg.id !== undefined && !msg.method) {
@@ -79,6 +116,10 @@ export class RpcProcess extends EventEmitter {
   private fail(error: Error) {
     if (this.ended) return;
     this.ended = true;
+    this.child.stdout.pause();
+    this.buffer = Buffer.alloc(0);
+    this.bufferedBytes = 0;
+    this.stderr = Buffer.alloc(0);
     for (const p of this.pending.values()) {
       clearTimeout(p.timer);
       p.reject(error);

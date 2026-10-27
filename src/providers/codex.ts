@@ -196,13 +196,13 @@ export class CodexDriver implements Driver {
               }
             : {}),
         },
-        developerInstructions:
-          providerInstructions(ctx),
+        developerInstructions: providerInstructions(ctx),
       };
+      // Exclude only the response history; the provider retains model context.
       const response = await rpc.request(
         ctx.task.sessionId ? "thread/resume" : "thread/start",
         ctx.task.sessionId
-          ? { ...params, threadId: ctx.task.sessionId }
+          ? { ...params, threadId: ctx.task.sessionId, excludeTurns: true }
           : params,
       );
       ctx.event({ type: "provider_ready", payload: { provider: "codex" } });

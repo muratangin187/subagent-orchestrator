@@ -19,6 +19,21 @@ createInterface({ input: process.stdin })
     if (m.method === "model/list")
       return reply(m.id, { data: [{ model: "fake", isDefault: true }] });
     if (m.method === "thread/start" || m.method === "thread/resume") {
+      if (m.method === "thread/resume" && m.params.excludeTurns !== true) {
+        // Model a long persisted history that must not be echoed to this client.
+        return reply(m.id, {
+          thread: {
+            id: m.params.threadId,
+            turns: [
+              {
+                items: [
+                  { type: "agentMessage", text: "x".repeat(9 * 1024 * 1024) },
+                ],
+              },
+            ],
+          },
+        });
+      }
       threadId = m.params.threadId ?? randomUUID();
       return reply(m.id, { thread: { id: threadId } });
     }
