@@ -1,5 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("desktop", {
+  createReport: (html) => ipcRenderer.invoke("create-report", html),
+  releaseReport: (url) => ipcRenderer.invoke("release-report", url),
   copyText: (text) => ipcRenderer.invoke("copy-text", text),
   microphoneAccess: () => ipcRenderer.invoke("microphone-access"),
   connection: () => ipcRenderer.invoke("connection"),

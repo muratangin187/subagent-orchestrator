@@ -70,6 +70,8 @@ export type Native = {
 declare global {
   interface Window {
     desktop: {
+      createReport(html: string): Promise<string>;
+      releaseReport(url: string): Promise<void>;
       copyText(text: string): Promise<void>;
       microphoneAccess(): Promise<boolean>;
       connection(): Promise<{ connected: boolean; origin?: string }>;

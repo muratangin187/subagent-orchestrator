@@ -18,6 +18,8 @@ const path = require("node:path");
 const os = require("node:os");
 const { pathToFileURL } = require("node:url");
 const policy = require("./policy.cjs");
+const { createReportPages, bindReportLifetime } = require("./report-pages.cjs");
+const reportPages = createReportPages();
 app.setName("Agent Workspace");
 protocol.registerSchemesAsPrivileged([
   { scheme: "workspace-visual", privileges: { standard: true, secure: true } },
@@ -125,6 +127,7 @@ function createWindow() {
       sandbox: true,
     },
   });
+  bindReportLifetime(win.webContents, reportPages);
   win.on("app-command", (_event, command) => {
     if (command === "browser-backward")
       win?.webContents.send("command", "back");
@@ -136,7 +139,7 @@ function createWindow() {
   win.webContents.on("will-frame-navigate", (e) => {
     if (
       e.url !== "about:srcdoc" &&
-      !/^workspace-visual:\/\/page\/[0-9a-f-]{36}$/.test(e.url)
+      !/^workspace-visual:\/\/(?:page|report)\/[0-9a-f-]{36}$/.test(e.url)
     )
       e.preventDefault();
   });
@@ -175,6 +178,7 @@ else {
     });
     protocol.handle("workspace-visual", async (req) => {
       const u = new URL(req.url);
+      if (u.host === "report") return reportPages.response(req.url);
       if (u.host !== "page" || !/^\/[0-9a-f-]{36}$/.test(u.pathname))
         return new Response("", { status: 403 });
       try {
@@ -223,6 +227,8 @@ else {
         "macOS mikrofon izni kapalı. Sistem Ayarları → Gizlilik ve Güvenlik → Mikrofon bölümünde Agent Workspace erişimini açıp uygulamayı yeniden başlat.",
       );
     });
+    handle("create-report", (html) => reportPages.add(html));
+    handle("release-report", (url) => reportPages.remove(url));
     handle("connection", async () => {
       await connectionReady;
       return { connected: !!connection, origin: connection?.origin };

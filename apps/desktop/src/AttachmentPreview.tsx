@@ -187,6 +187,20 @@ function HtmlReport({ name, text }: { name: string; text: string }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [source, setSource] = useState(false);
   const [link, setLink] = useState<string | null>(null);
+  const [page, setPage] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let disposed = false;
+    let url: string | undefined;
+    setPage(null);
+    setError("");
+    void window.desktop.createReport(safeHtmlDocument(text)).then(value => {
+      url = value;
+      if (disposed) void window.desktop.releaseReport(value);
+      else setPage(value);
+    }).catch(() => { if (!disposed) setError("Rapor açılamadı. Kapatıp yeniden dene."); });
+    return () => { disposed = true; if (url) void window.desktop.releaseReport(url); };
+  }, [text]);
   useEffect(() => {
     setLink(null);
     const receive = (event: MessageEvent) => {
@@ -205,7 +219,7 @@ function HtmlReport({ name, text }: { name: string; text: string }) {
       <button onClick={() => { void window.desktop.openLink(link); setLink(null); }}>Tarayıcıda aç</button>
       <button onClick={() => setLink(null)}>Vazgeç</button></div>}
     {source ? <pre className="file-preview">{text.slice(0, 100000)}</pre> :
-      <iframe ref={frame} className="html-preview" title={name + " önizleme"} sandbox="allow-scripts"
-        referrerPolicy="no-referrer" srcDoc={safeHtmlDocument(text)} />}
+      error ? <p role="alert">{error}</p> : !page ? <p>Rapor yükleniyor…</p> : <iframe ref={frame} className="html-preview" title={name + " önizleme"} sandbox="allow-scripts"
+        referrerPolicy="no-referrer" src={page} />}
   </div>;
 }
