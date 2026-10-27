@@ -17,6 +17,9 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
+        getByName("debug") {
+            if (providers.gradleProperty("isolatedQa").orNull == "true") applicationIdSuffix = ".qa"
+        }
         getByName("release") {
             isDebuggable = false
         }

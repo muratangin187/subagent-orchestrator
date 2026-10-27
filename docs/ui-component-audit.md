@@ -43,3 +43,11 @@ Application commit `94385cf` was packaged and installed on Mac and the paired Sa
 - Samsung: connected conversation, jobs sheet/filter/empty state, sessions, new-session form, model sheet, attachment-source sheet, settings and idle voice UI inspected. Model controls remained usable with keyboard open at font scale 1.3; original 1.15 scale restored. No model choice, task message, recording, cancellation or credential change was submitted.
 - Existing file-preview QA conversation had no accessible attachment in its current history. Android PDF/image/HTML viewers were reviewed in source, not asserted as freshly exercised native flows.
 - Synthetic screenshot collection: `.local/qa/full-ui-20261027/desktop/`; Mac settings capture alongside it. These artifacts are intentionally not committed.
+
+## Viewer coverage extension
+
+The earlier source-only viewer coverage was extended using `attachment-viewers.qa.mjs`: ten light/dark states covering valid two-page PDF navigation, malformed PDF, Markdown source/copy/preview, long text and decoded image. The fixture serves the actual built renderer and rejects mutations. Screenshots are in `/tmp/aw-viewer-qa`.
+
+A debug-only `ViewerQaActivity` now mounts the production Android viewer with local generated fixtures. Build with `-PisolatedQa=true -PwithFirebase=false` to use the separate `dev.agentworkspace.qa` data directory. It does not access the personal app's pairing or messages. See `apps/android/VIEWER-QA.md`.
+
+On the real Samsung, the isolated app opened PDF pages 1 and 2 (last-page Next disabled), image, Markdown, HTML, long text, malformed PDF and malformed image. The HTML Filter button changed its output to `Filtre uygulandı`; failure states kept the close action accessible. This does not yet prove every viewer's zoom, external export, light-theme or full accessibility behavior. Those remain part of the final completion audit.
