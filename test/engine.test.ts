@@ -446,25 +446,43 @@ test("provider errors produce durable failure notifications and release capacity
     await s.close();
   }
 });
-test("shared writable tasks serialize on the same workspace", async () => {
-  const s = setup();
-  try {
-    const writer = {
-      ...scope,
-      id: "writer",
-      ceiling: "auto-accept-edits" as const,
-    };
-    for (let i = 0; i < 2; i++)
-      await s.engine.call(writer, "delegate_task", { task: "edit" });
-    await tick();
-    assert.equal(s.drivers.length, 1);
-    s.drivers[0]!.resolve!("done");
-    await tick();
-    assert.equal(s.drivers.length, 2);
-  } finally {
-    await s.close();
-  }
-});
+for (const ceiling of [
+  "read-only",
+  "auto-accept-edits",
+  "full-access",
+] as const) {
+  test(`same-cwd ${ceiling} tasks overlap while capacity still queues excess work`, async () => {
+    const s = setup(2);
+    try {
+      const writer = { ...scope, id: "writer", ceiling };
+      const tasks = [];
+      for (let i = 0; i < 3; i++)
+        tasks.push(
+          (await s.engine.call(writer, "delegate_task", {
+            task: "coordinate",
+            runtimeMode: ceiling,
+          })) as any,
+        );
+      await tick();
+      assert.equal(s.drivers.length, 2);
+      assert.deepEqual(
+        tasks.map((t) => s.store.task(t.taskId).status),
+        ["running", "running", "pending"],
+      );
+      assert.equal(
+        s.drivers[0]!.context!.task.cwd,
+        s.drivers[1]!.context!.task.cwd,
+      );
+      assert.equal(s.drivers[0]!.context!.task.runtimeMode, ceiling);
+      s.drivers[0]!.resolve!("done");
+      await tick();
+      assert.equal(s.drivers.length, 3);
+      assert.equal(s.store.task(tasks[2].taskId).status, "running");
+    } finally {
+      await s.close();
+    }
+  });
+}
 
 test("invalid question answers preserve the pending question", async () => {
   const s = setup();
@@ -559,7 +577,7 @@ test("quota failure notifies parent, holds queued work, preserves run evidence o
   }
 });
 
-test("assistant follow-up runs while a shared child is active, ordinary writers remain serialized", async () => {
+test("assistant follow-up and same-cwd siblings run while a shared child is active", async () => {
   const s = setup();
   const writer = { ...scope, ceiling: "auto-accept-edits" as const };
   try {
@@ -597,7 +615,7 @@ test("assistant follow-up runs while a shared child is active, ordinary writers 
       mode: "async",
     })) as any;
     await tick();
-    assert.equal(s.store.task(sibling.taskId).status, "pending");
+    assert.equal(s.store.task(sibling.taskId).status, "running");
     await assert.rejects(
       s.engine.call(childScope, "wait_for_task", { taskId: child.taskId }),
       /Assistant must delegate async/,
