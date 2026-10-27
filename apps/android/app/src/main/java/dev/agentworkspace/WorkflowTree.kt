@@ -32,3 +32,20 @@ fun workflowElapsed(task: JSONObject, now: Long = System.currentTimeMillis()): S
     val minutes = ((end - task.optLong("runStartedAt", task.optLong("runCreatedAt", task.optLong("createdAt")))) / 60000).coerceAtLeast(0)
     return if (minutes < 1) "<1 dk" else if (minutes < 60) "$minutes dk" else "${minutes / 60} sa ${minutes % 60} dk"
 }
+
+fun resultNeedsAttention(task: JSONObject): Boolean =
+    task.optString("status") in listOf("completed", "failed", "recovery_required") &&
+    task.optJSONObject("resultDelivery")?.optString("state")?.let { it != "response_ready" } == true
+
+fun resultDeliveryLabel(task: JSONObject): String = when(task.optJSONObject("resultDelivery")?.optString("state")) {
+    "unreported" -> "Sonuç aktarımı doğrulanamadı"
+    "pending" -> "Sonuç asistana aktarılmayı bekliyor"
+    "queued" -> "Asistan yanıtı sırada"
+    "processing" -> "Asistan sonucu işliyor"
+    "blocked" -> "Sonuç aktarımı beklemede"
+    "response_failed" -> "Asistanın nihai yanıtı oluşmadı"
+    "response_ready" -> "Asistanın sonuç turu tamamlandı"
+    "children_pending" -> "Alt işler devam ediyor"
+    "reconciliation_required" -> "Alt iş sonucu henüz birleştirilmedi"
+    else -> ""
+}

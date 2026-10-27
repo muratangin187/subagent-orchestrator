@@ -526,7 +526,10 @@ fun WorkspaceApp(model: WorkspaceModel) {
                                 items(workflowRows.filter { isActiveJob(it.task) }, key = { it.task.getString("id") }) { entry ->
                                     WorkflowCard(entry, onOpen = { openTask(entry.task) })
                                 }
-                                val completed = workflowRows.filter { !isActiveJob(it.task) }.sortedByDescending { it.task.optLong("updatedAt") }
+                                val awaiting = workflowRows.filter { resultNeedsAttention(it.task) }
+                                if (awaiting.isNotEmpty()) item { Text("Yanıtı beklenen sonuçlar", style = MaterialTheme.typography.titleSmall) }
+                                items(awaiting, key = { "result:" + it.task.getString("id") }) { entry -> WorkflowCard(entry, onOpen = { openTask(entry.task) }) }
+                                val completed = workflowRows.filter { !isActiveJob(it.task) && !resultNeedsAttention(it.task) }.sortedByDescending { it.task.optLong("updatedAt") }
                                 if (completed.isNotEmpty()) item {
                                     HorizontalDivider(Modifier.padding(top = 12.dp))
                                     TextButton(onClick = { showCompletedWork = !showCompletedWork }) {
@@ -1128,6 +1131,7 @@ private fun WorkflowCard(entry: JobTreeRow, onOpen: () -> Unit) {
             if (entry.depth > 0) Text(entry.path.joinToString(" → "), style = MaterialTheme.typography.labelSmall)
             Text(job.optString("title"), style = MaterialTheme.typography.titleSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
             Text(statusLabel(job.optString("status")) + " · Tur süresi " + workflowElapsed(job), style = MaterialTheme.typography.bodySmall)
+            if (resultNeedsAttention(job)) Text(resultDeliveryLabel(job) + " · Sonucu aç", style = MaterialTheme.typography.bodySmall)
             if (job.optBoolean("quiet")) Text("10 dk boyunca etkinlik alınmadı · Kontrol gerekli", style = MaterialTheme.typography.bodySmall)
         }
     }

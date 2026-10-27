@@ -34,3 +34,12 @@ test('elapsed time uses current run and freezes after completion', async () => {
   assert.equal(elapsedLabel(task,180_000),'2 dk');
   assert.equal(elapsedLabel({...task,status:'completed',runFinishedAt:120_000},999_000),'1 dk');
 });
+
+test('unfinished result delivery stays visible without pretending the job is executing',async()=>{
+ const {resultNeedsAttention,resultDeliveryLabel}=await import('../src/workflow-tree.mjs');
+ const t={status:'completed',resultDelivery:{state:'response_failed'}};
+ assert.equal(resultNeedsAttention(t),true);assert.match(resultDeliveryLabel(t),/nihai yanıtı oluşmadı/);
+ assert.equal(resultNeedsAttention({...t,resultDelivery:{state:'response_ready'}}),false);
+ assert.equal(resultNeedsAttention({status:'completed'}),false);
+ assert.equal(resultNeedsAttention({...t,status:'running'}),false);
+});

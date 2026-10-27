@@ -33,3 +33,11 @@ export function elapsedLabel(task, now = Date.now()) {
   const minutes = Math.max(0, Math.floor((end - (task.runStartedAt ?? task.runCreatedAt ?? task.createdAt)) / 60000));
   return minutes < 1 ? "<1 dk" : minutes < 60 ? `${minutes} dk` : `${Math.floor(minutes / 60)} sa ${minutes % 60} dk`;
 }
+
+export function resultNeedsAttention(task) {
+  return ['completed','failed','recovery_required'].includes(task.status) &&
+    !!task.resultDelivery && task.resultDelivery.state !== 'response_ready';
+}
+export function resultDeliveryLabel(task) {
+  return ({unreported:'Sonuç aktarımı doğrulanamadı',pending:'Sonuç asistana aktarılmayı bekliyor',queued:'Asistan yanıtı sırada',processing:'Asistan sonucu işliyor',blocked:'Sonuç aktarımı beklemede',response_failed:'Asistanın nihai yanıtı oluşmadı',response_ready:'Asistanın sonuç turu tamamlandı',children_pending:'Alt işler devam ediyor',reconciliation_required:'Alt iş sonucu henüz birleştirilmedi'})[task.resultDelivery?.state] || '';
+}

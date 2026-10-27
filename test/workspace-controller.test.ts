@@ -680,3 +680,87 @@ test('large child results and questions are durably delivered within the command
   await s.c.pump();assert.equal(Number(s.store.db.prepare('SELECT count(*) AS n FROM workspace_deliveries').get()!.n),16);
  } finally {await s.close()}
 });
+
+test('late child results resume their completed owner once before returning to assistant',async()=>{
+ const s=setup();try {
+  s.c.submit({id:'late-root',target:'assistant',kind:'assistant',provider:'codex',body:'work'});
+  await until(()=>!!s.drivers[0]?.context);const root=s.c.get('assistant')!;
+  const owner=await s.engine.call({...s.c.scope,id:`child:${root}`,parentTaskId:root},'delegate_task',{task:'own the job'}) as any;
+  await until(()=>!!s.drivers[1]?.context);
+  const child=await s.engine.call({...s.c.scope,id:`child:${owner.taskId}`,parentTaskId:owner.taskId},'delegate_task',{task:'research'}) as any;
+  await until(()=>!!s.drivers[2]?.context);
+  s.drivers[1]!.resolve('Waiting for research');s.drivers[0]!.resolve('Delegated');
+  await until(()=>s.store.task(owner.taskId).status==='completed' && s.store.task(root).status==='completed');
+  assert.equal(s.c.snapshot().tasks.find(t=>t.id===owner.taskId)!.resultDelivery!.state,'children_pending');
+  await s.c.pump();await until(()=>!!s.drivers[3]?.context);
+  s.drivers[2]!.resolve('LATE_RESEARCH_RESULT');await until(()=>s.store.task(child.taskId).status==='completed');
+  assert.equal(s.c.snapshot().tasks.find(t=>t.id===owner.taskId)!.resultDelivery!.state,'reconciliation_required');
+  await s.c.pump();await until(()=>!!s.drivers[4]?.context);
+  assert.equal(s.drivers[4]!.context.task.id,owner.taskId);
+  assert.match(s.drivers[4]!.context.run.prompt,/LATE_RESEARCH_RESULT/);
+  await s.c.pump();assert.equal(s.drivers.length,5);
+  s.drivers[4]!.resolve('Consolidated delivery');await until(()=>s.store.task(owner.taskId).status==='completed');
+  s.drivers[3]!.resolve('Initial status');await until(()=>s.store.task(root).status==='completed');
+  await s.c.pump();await until(()=>!!s.drivers[5]?.context);
+  assert.match(s.drivers[5]!.context.run.prompt,/Consolidated delivery/);
+  assert.equal(s.c.snapshot().tasks.find(t=>t.id===owner.taskId)!.resultDelivery!.state,'processing');
+  s.drivers[5]!.resolve('Final response');await until(()=>s.store.task(root).status==='completed');
+  assert.equal(s.c.snapshot().tasks.find(t=>t.id===owner.taskId)!.resultDelivery!.state,'response_ready');
+ }finally{await s.close()}
+});
+
+test('accepted notification plus commentary is not a final response after provider failure',async()=>{
+ const s=setup();try {
+  s.c.submit({id:'failed-response-root',target:'assistant',kind:'assistant',provider:'codex',body:'work'});
+  await until(()=>!!s.drivers[0]?.context);const root=s.c.get('assistant')!;
+  const child=await s.engine.call({...s.c.scope,id:`child:${root}`,parentTaskId:root},'delegate_task',{task:'deliver report'}) as any;
+  await until(()=>!!s.drivers[1]?.context);
+  s.drivers[0]!.resolve('Delegated');s.drivers[1]!.resolve('REPORT');
+  await until(()=>s.store.task(root).status==='completed' && s.store.task(child.taskId).status==='completed');
+  await s.c.pump();await until(()=>!!s.drivers[2]?.context);
+  s.drivers[2]!.context.event({type:'assistant_message',payload:{text:'Checking',phase:'commentary'}});
+  s.drivers[2]!.reject(new Error('Provider exited (0)'));
+  await until(()=>s.store.task(root).status==='failed');
+  assert.equal(s.c.snapshot().tasks.find(t=>t.id===child.taskId)!.resultDelivery!.state,'response_failed');
+  await s.c.pump();assert.equal(s.drivers.length,3);
+ }finally{await s.close()}
+});
+
+test('nested overflow and results arriving during reconciliation are never skipped',async()=>{
+ const s=setup();try {
+  s.c.submit({id:'nested-many',target:'assistant',kind:'assistant',provider:'codex',body:'work'});
+  await until(()=>!!s.drivers[0]?.context);const root=s.c.get('assistant')!;
+  const owner=await s.engine.call({...s.c.scope,id:`child:${root}`,parentTaskId:root},'delegate_task',{task:'own job'}) as any;
+  await until(()=>!!s.drivers[1]?.context);s.drivers[1]!.resolve('Waiting');
+  await until(()=>s.store.task(owner.taskId).status==='completed');
+  const fixture={...s.store.task(owner.taskId),owner:`child:${owner.taskId}`,resultSummary:'x'.repeat(7000)};
+  for(let i=0;i<15;i++)s.store.notify(fixture);
+  await s.c.pump();await until(()=>!!s.drivers[2]?.context);
+  // This notice arrives while reconciliation is running, before its completion boundary.
+  s.store.notify({...fixture,resultSummary:'ARRIVED_DURING_RECONCILIATION'});
+  let delivered=0;let sawLate=false;
+  for(let i=0;i<10 && delivered<16;i++){
+   const driver=s.drivers.at(-1)!;sawLate ||= driver.context.run.prompt.includes('ARRIVED_DURING_RECONCILIATION');
+   delivered=Number(s.store.db.prepare('SELECT count(*) AS n FROM workspace_deliveries').get()!.n);
+   driver.resolve('Consolidated');await until(()=>s.store.task(owner.taskId).status==='completed');
+   if(delivered<16){await s.c.pump();await until(()=>s.store.task(owner.taskId).status==='running');}
+  }
+  assert.equal(delivered,16);assert.ok(sawLate);
+  const count=s.drivers.length;await s.c.pump();assert.equal(s.drivers.length,count);
+ }finally{await s.close()}
+});
+
+test('enabling nested handback does not replay legacy notifications',async()=>{
+ const s=setup();try {
+  s.c.submit({id:'legacy-root',target:'assistant',kind:'assistant',provider:'codex',body:'work'});
+  await until(()=>!!s.drivers[0]?.context);const root=s.c.get('assistant')!;
+  const owner=await s.engine.call({...s.c.scope,id:`child:${root}`,parentTaskId:root},'delegate_task',{task:'old job'}) as any;
+  await until(()=>!!s.drivers[1]?.context);s.drivers[1]!.resolve('Old result');await until(()=>s.store.task(owner.taskId).status==='completed');
+  s.store.notify({...s.store.task(owner.taskId),owner:`child:${owner.taskId}`,resultSummary:'OLD_NESTED_RESULT'});
+  s.store.db.prepare("DELETE FROM workspace_state WHERE key='nestedNotificationFloor'").run();
+  const upgraded=new WorkspaceController(s.engine,s.store,s.home,'read-only','test-model');
+  await upgraded.pump();await tick();assert.equal(s.drivers.length,2);
+  assert.equal(s.store.db.prepare('SELECT count(*) AS n FROM workspace_deliveries').get()!.n,0);
+  await upgraded.stop();
+ }finally{await s.close()}
+});

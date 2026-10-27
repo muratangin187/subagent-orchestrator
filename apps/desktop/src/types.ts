@@ -18,6 +18,7 @@ export type Task = {
   runFinishedAt?: number;
   lastActivityAt?: number;
   quiet?: boolean;
+  resultDelivery?: { state: string; notificationId?: number; assistantRunId?: string };
   question?: {
     id: string;
     prompt: {

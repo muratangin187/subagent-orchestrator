@@ -29,4 +29,12 @@ class WorkflowTreeTest {
   t.put("status","completed").put("runFinishedAt",240000)
   assertEquals("2 dk", workflowElapsed(t,999000))
  }
+ @Test fun unresolvedResultsRemainVisibleWithoutClaimingExecution() {
+  val t=task("x","root","completed").put("resultDelivery",JSONObject().put("state","response_failed"))
+  assertTrue(resultNeedsAttention(t))
+  assertEquals("Asistanın nihai yanıtı oluşmadı", resultDeliveryLabel(t))
+  t.getJSONObject("resultDelivery").put("state","response_ready")
+  assertFalse(resultNeedsAttention(t))
+  assertFalse(resultNeedsAttention(task("legacy","root","completed")))
+ }
 }

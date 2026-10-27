@@ -5,7 +5,7 @@ import { WorkspaceLayout, type PaneProps } from "./WorkspaceLayout";
 import { VoiceDock } from "./VoiceDock";
 import { InlineVisual } from "./InlineVisual";
 import { UsageLimits } from "./UsageLimits";
-import { elapsedLabel, workflowTree, loadWorkflowPreference, workflowPreferenceKey } from "./workflow-tree.mjs";
+import { elapsedLabel, resultNeedsAttention, resultDeliveryLabel, workflowTree, loadWorkflowPreference, workflowPreferenceKey } from "./workflow-tree.mjs";
 import { taskTree } from "./task-tree.mjs";
 import { ModelPicker, type Selection } from "./ModelPicker";
 import {
@@ -1785,9 +1785,15 @@ function App({
                     {t.quiet && <p className="quiet">10 dk boyunca etkinlik alınmadı · Kontrol gerekli</p>}
                   </div>
                 ))}
-                {workflowRows.some(({ task: t }) => !isActive(t)) && <details className="workflow-completed">
-                  <summary>Sonlanan işler ({workflowRows.filter(({ task: t }) => !isActive(t)).length})</summary>
-                  {workflowRows.filter(({ task: t }) => !isActive(t)).sort((a,b) => b.task.updatedAt - a.task.updatedAt).map(({ task: t, depth, path }) => (
+                {workflowRows.some(({task:t})=>resultNeedsAttention(t)) && <section aria-label="Yanıtı beklenen sonuçlar">
+                  <h4>Yanıtı beklenen sonuçlar</h4>
+                  {workflowRows.filter(({task:t})=>resultNeedsAttention(t)).map(({task:t})=><div className="workflow-card" key={t.id}>
+                    {row(t)}<p>{resultDeliveryLabel(t)}</p><button onClick={()=>openTask(t.id)}>Sonucu aç</button>
+                  </div>)}
+                </section>}
+                {workflowRows.some(({ task: t }) => !isActive(t) && !resultNeedsAttention(t)) && <details className="workflow-completed">
+                  <summary>Sonlanan işler ({workflowRows.filter(({ task: t }) => !isActive(t) && !resultNeedsAttention(t)).length})</summary>
+                  {workflowRows.filter(({ task: t }) => !isActive(t) && !resultNeedsAttention(t)).sort((a,b) => b.task.updatedAt - a.task.updatedAt).map(({ task: t, depth, path }) => (
                     <div className="workflow-card" key={t.id} style={{ marginLeft: Math.min(depth, 6) * 16 }}>
                       {depth > 0 && <small className="quiet">{path.join(" → ")}</small>}{row(t)}
                       <small>{labels[t.status] || t.status} · Tur süresi {elapsedLabel(t)}</small>

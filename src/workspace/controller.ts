@@ -1,3 +1,4 @@
+import { resultDeliveries } from "./result-delivery.js";
 import { notificationBatch } from "./notification-batch.js";
 import { taskHealth } from "./task-health.js";
 import { SESSION_LINK_INSTRUCTIONS } from "./session-links.js";
@@ -53,6 +54,9 @@ export class WorkspaceController {
    CREATE TABLE IF NOT EXISTS workspace_state(key TEXT PRIMARY KEY,value TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS workspace_deliveries(event_id INTEGER PRIMARY KEY,input_id TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS workspace_errors(id TEXT PRIMARY KEY,message TEXT NOT NULL);`);
+    // Enable future nested handbacks without replaying historical finished jobs on upgrade.
+    if (!this.get("nestedNotificationFloor")) this.set("nestedNotificationFloor", String(
+      this.store.db.prepare("SELECT coalesce(max(id),0) n FROM notifications").get()!.n));
   }
   start() {
     this.stopped = false;
@@ -108,6 +112,8 @@ export class WorkspaceController {
     return { commandId: input.id };
   }
   snapshot() {
+    const tasks = this.store.tasks().filter(t => t.rootOwner === this.scope.id || t.owner === this.scope.id);
+    const delivery = resultDeliveries(this.store, tasks, this.get("assistant"));
     const inputs = this.store.db
       .prepare(
         "SELECT data,state FROM workspace_inputs ORDER BY rowid DESC LIMIT 100",
@@ -132,12 +138,7 @@ export class WorkspaceController {
       assistantId: this.get("assistant"),
       cwd: this.scope.cwd,
       ceiling: this.scope.ceiling,
-      tasks: this.store
-        .tasks()
-        .filter(
-          (t) => t.rootOwner === this.scope.id || t.owner === this.scope.id,
-        )
-        .map((t) => ({ ...t, ...taskHealth(this.store, t), instructions: undefined })),
+      tasks: tasks.map((t) => ({ ...t, ...taskHealth(this.store, t), resultDelivery: delivery.get(t.id), instructions: undefined })),
       inputs: inputs.reverse().map((r) => ({
         ...JSON.parse(r.data),
         state: r.state,
@@ -182,38 +183,33 @@ export class WorkspaceController {
           assistant.instructions = ASSISTANT_INSTRUCTIONS;
           this.store.saveTask(assistant);
         }
-        // Don't silently resume a quota-blocked or uncertain assistant on a background event.
-        if (
-          terminal(assistant.status) &&
-          !assistant.failure &&
-          assistant.status !== "recovery_required" &&
-          !assistant.cancelled
-        ) {
-          const offset = Number(this.get("notificationOffset") ?? 0);
-          const page = this.store.notifications(
-            `child:${assistantId}`,
-            offset,
-            100,
-          );
-          const fresh = page.notifications.filter(n => !this.store.db
-            .prepare("SELECT 1 FROM workspace_deliveries WHERE event_id=?").get(n.offset));
-          const batch = notificationBatch(fresh);
-          if (batch.notifications.length) {
-            const last = batch.notifications[batch.notifications.length - 1]!;
-            const id = `event:${last.offset}`;
-            const input = {
-              id, target: assistantId,
-              body: batch.body,
-              provider: "codex" as const, kind: "assistant" as const,
-            };
-            this.store.transaction(() => {
-              this.store.db.prepare("INSERT OR IGNORE INTO workspace_inputs VALUES(?,?,?,?,?)")
-                .run(id, assistantId, input.body, "pending", JSON.stringify(input));
-              for (const n of batch.notifications) this.store.db.prepare("INSERT INTO workspace_deliveries VALUES(?,?)").run(n.offset, id);
-              this.set("notificationOffset", String(last.offset));
-            });
-          }
-        }
+      }
+      const owners = this.store.tasks().filter(t => t.id === assistantId ||
+        (t.rootOwner === this.scope.id && !!t.parentTaskId));
+      for (const owner of owners) {
+        // A failed/cancelled/uncertain owner requires an explicit continuation.
+        if (owner.status !== "completed" || owner.failure || owner.cancelled) continue;
+        const isAssistant = owner.id === assistantId;
+        const key = isAssistant ? "notificationOffset" : `notificationOffset:${owner.id}`;
+        const offset = Number(this.get(key) ?? (isAssistant ? 0 : this.get("nestedNotificationFloor") ?? 0));
+        const page = this.store.notifications(`child:${owner.id}`, offset, 100);
+        // Delivery is receipt-based, not inferred from owner completion times.
+        // Children can finish during an owner's run or between bounded batches.
+        const fresh = page.notifications.filter(n =>
+          !this.store.db.prepare("SELECT 1 FROM workspace_deliveries WHERE event_id=?").get(n.offset));
+        const batch = notificationBatch(fresh);
+        if (batch.notifications.length) {
+          const last = batch.notifications[batch.notifications.length - 1]!;
+          const id = `event:${last.offset}`;
+          const input = {id, target: owner.id, body: batch.body,
+            provider: owner.provider, kind: isAssistant ? "assistant" as const : "session" as const};
+          this.store.transaction(() => {
+            this.store.db.prepare("INSERT OR IGNORE INTO workspace_inputs VALUES(?,?,?,?,?)")
+              .run(id, owner.id, input.body, "pending", JSON.stringify(input));
+            for (const n of batch.notifications) this.store.db.prepare("INSERT INTO workspace_deliveries VALUES(?,?)").run(n.offset,id);
+            this.set(key,String(last.offset));
+          });
+        } else if(page.nextOffset > offset) this.set(key,String(page.nextOffset));
       }
       // Durable FIFO inputs; the engine serializes turns within each native session.
       const rows = this.store.db
@@ -229,7 +225,7 @@ export class WorkspaceController {
           if (id === "new") id = this.get(`input:${input.id}`);
           if (id && input.id.startsWith("event:")) {
             const t = this.store.task(id);
-            if (t.failure || t.status === "recovery_required" || t.cancelled)
+            if (t.failure || t.status !== "completed" || t.cancelled)
               continue;
           }
           if (!id) {
